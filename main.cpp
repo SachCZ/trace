@@ -12,12 +12,12 @@ using Intersection = raytracer::geometry::Intersection;
 
 int main(int argc, char* argv[])
 {
-    Mesh mesh("./mesh.stl");
-    Ray ray(Point(-0.995, 5), Vector(0, -1));
+    Mesh mesh("./broken_mesh.stl");
+    Ray ray(Point(-2, 0.9), Vector(1, 0));
     ray.traceThrough(mesh, [](const Intersection& intersection){
-        //auto x = intersection.point.x;
-        //auto y = intersection.point.y;
-        return Vector(0, -1);
+        auto x = intersection.point.x;
+        auto y = intersection.point.y;
+        return Vector(3*y, -1);
     });
     ray.saveToJson("ray");
     mesh.saveToJson("mesh");
