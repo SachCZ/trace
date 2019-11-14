@@ -23,7 +23,7 @@ git clone https://github.com/SachCZ/trace
 The project uses cmake to compile. It will download and setup all its dependencies automatically.
 As a user just do the following from the project root:
 ```
-mdir build
+mkdir build
 cd build/
 cmake ../
 make
