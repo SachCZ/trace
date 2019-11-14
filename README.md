@@ -6,6 +6,7 @@
 None for now.
 
 git
+cmake
 
 ## Compiling
 The project uses cmake to compile. It will download and setup all its dependencies automatically.
