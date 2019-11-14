@@ -12,7 +12,7 @@ using Intersection = raytracer::geometry::Intersection;
 
 int main(int argc, char* argv[])
 {
-    Mesh mesh("./broken_mesh.stl");
+    Mesh mesh("./broken_mesh.vtk");
     Ray ray(Point(-2, 0.9), Vector(1, 0));
     ray.traceThrough(mesh, [](const Intersection& intersection){
         auto x = intersection.point.x;
