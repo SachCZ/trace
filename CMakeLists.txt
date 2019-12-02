@@ -10,3 +10,6 @@ add_subdirectory(external/raytracer)
 
 add_executable(trace main.cpp)
 target_link_libraries(trace raytracer)
+
+add_executable(prototype prototype.cpp)
+target_link_libraries(prototype raytracer)
