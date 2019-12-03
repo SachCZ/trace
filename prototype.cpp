@@ -1,67 +1,61 @@
-#include <utility>
+#include <raytracer/geometry/Mesh.h>
+#include <raytracer/physics/Functions.h>
+#include <raytracer/physics/Laser.h>
+#include <raytracer/geometry/Functions.h>
+#include <raytracer/geometry/Ray.h>
+#include "mfem.hpp"
 
-#include "raytracer/geometry/Mesh.h"
-#include "raytracer/geometry/MeshFunction.h"
-#include "raytracer/geometry/Ray.h"
-#include "raytracer/geometry/Point.h"
-#include "raytracer/geometry/Vector.h"
-#include "raytracer/physics/LaserRay.h"
-#include "raytracer/physics/Magnitudes.h"
-#include "raytracer/physics/Functions.h"
-#include "raytracer/physics/Laser.h"
-#include <cmath>
-#include <sstream>
-#include <fstream>
-#include <functional>
+using namespace raytracer::geometry;
+using namespace raytracer::physics;
 
-using Mesh = raytracer::geometry::Mesh;
-using Ray = raytracer::geometry::Ray;
-using Point = raytracer::geometry::Point;
-using Vector = raytracer::geometry::Vector;
-using Quadrilateral = raytracer::geometry::Quadrilateral;
-using RayState = raytracer::geometry::RayState;
-using LaserRay = raytracer::physics::LaserRay;
-using Laser = raytracer::physics::Laser;
-using MeshFunction = raytracer::geometry::MeshFunction;
-using Energy = raytracer::physics::Energy;
-using Length = raytracer::physics::Length;
-using LinearFunction = raytracer::physics::LinearFunction;
-using Gaussian = raytracer::physics::Gaussian;
-namespace JSON = raytracer::utility::json;
-namespace utility = raytracer::utility;
+double density(const mfem::Vector &x){
+    return 12.8e20 * x(0);
+}
+
 
 int main(int argc, char *argv[]) {
-    Mesh mesh("./broken_mesh.vtk");
 
-    MeshFunction absorbedEnergy(mesh);
-    MeshFunction density(mesh);
+    DiscreteLine side{};
+    side.segmentCount = 100;
+    side.width = 1;
+    Mesh mesh(side, side);
 
-    LinearFunction linearFunction(6.3e20, 6.4e20);
-    density.setAll(mesh.getQuads(), [&](const Quadrilateral &quad) { return linearFunction(quad.getAveragePoint().x);});
+    mfem::Mesh externalMesh(
+            side.segmentCount,
+            side.segmentCount,
+            mfem::Element::Type::QUADRILATERAL,
+            true,
+            side.width,
+            side.width,
+            true);
 
-    Laser laser(Length{1315e-7}, [](const Point& point){ return Vector(1, 0);}, Gaussian(0.2));
+    mfem::H1_FECollection finiteElementCollection(1, 2);
+    mfem::FiniteElementSpace finiteElementSpace(&externalMesh, &finiteElementCollection);
+    mfem::GridFunction densityGridFunction(&finiteElementSpace);
+    mfem::FunctionCoefficient densityFunctionCoefficient(density);
+    densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
 
-    std::ofstream file("ray.json");
-    JSON::Value rays(JSON::arrayValue);
+    Laser laser(Length{1315e-7}, [](const Point &point) { return Vector(1, 0); }, Gaussian(0.2));
 
-    for (const auto &laserRay : laser.generateRays(100, Point(-2, -0.9), Point(-2, 0.9))) {
-        Ray ray(laserRay.startPoint, laserRay.direction);
+    std::vector<std::vector<Intersection>> rays;
+    for (const auto &laserRay : laser.generateRays(100, Point(-1, 0.1), Point(-1, 0.9))) {
+        Ray ray(HalfLine{laserRay.startPoint, laserRay.direction});
 
-        auto nextDirection = [](const RayState &rayState) {
-            return rayState.currentDirection;
-        };
-
-        auto stopCondition = density.greaterOrEqual(
-                laserRay.getCriticalDensity().asDouble,
-                [&](const Quadrilateral& quad) { absorbedEnergy[quad] += laserRay.energy.asDouble; });
-
-        ray.traceThrough(mesh, nextDirection, stopCondition);
-
-        rays.append(ray.getJsonValue());
+        auto intersections = ray.findIntersections(
+                mesh,
+                [](const Intersection& intersection, const Element& element) {
+                    return findClosestIntersection(intersection.orientation, element.getFaces());
+                },
+                [&laserRay, &densityGridFunction](const Intersection& intersection, const Element& element) {
+                    mfem::Array<double> nodalValues;
+                    mfem::IntegrationPoint integrationPoint{};
+                    integrationPoint.Set2(intersection.orientation.point.x, intersection.orientation.point.y);
+                    auto currentDensity = densityGridFunction.GetValue(element.getId(), integrationPoint);
+                    auto criticalDensity = laserRay.getCriticalDensity().asDouble;
+                    return currentDensity > criticalDensity;
+                }
+        );
+        rays.emplace_back(intersections);
     }
-    JSON::Value root;
-    root["rays"] = rays;
-    root["absorbedEnergy"] = absorbedEnergy.getJsonValue();
-    file << root;
-    mesh.saveToJson("mesh");
+    std::cout << "";
 }
