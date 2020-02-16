@@ -37,7 +37,7 @@ struct SnellsLaw {
     explicit SnellsLaw(const MeshFunction &density) :
             density(density) {}
 
-    std::unique_ptr<Intersection> operator()(const Intersection &intersection, const LaserRay &laserRay) {
+    std::unique_ptr<Intersection> operator()(const Intersection &intersection) {
         const auto previousElement = intersection.previousElement;
         const auto nextElement = intersection.nextElement;
 
@@ -45,8 +45,8 @@ struct SnellsLaw {
             return findClosestIntersection(intersection.orientation, nextElement->getFaces(), intersection.face);
         }
 
-        const double n1 = std::sqrt(1 - density[*previousElement] / laserRay.getCriticalDensity().asDouble);
-        const double n2 = std::sqrt(1 - density[*nextElement] / laserRay.getCriticalDensity().asDouble);
+        const double n1 = std::sqrt(1 - density[*previousElement] / 6e20);
+        const double n2 = std::sqrt(1 - density[*nextElement] / 6e20);
 
         const Vector gradient(12.8e20, 0);
         const auto& direction = intersection.orientation.direction;
@@ -96,13 +96,13 @@ private:
     MeshFunction& absorbedEnergy;
 };
 
-int main(int, char *[]) {
+int main(int argc, char *argv[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    //DiscreteLine side{};
-    //side.segmentCount = 100;
-    //side.length = 1;
+    DiscreteLine side{};
+    side.segmentCount = 100;
+    side.length = 1;
     //auto mfemMesh = constructRectangleMesh(side, side);
 
     auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
@@ -127,14 +127,14 @@ int main(int, char *[]) {
 
     Laser laser(
             Length{1315e-7},
-            [](const Point) { return Vector(1, -0.3); },
-            Gaussian(0.1),
-            Point(-1.1, 0.9),
-            Point(-1.1, 0.7)
+            [](const Point &point) { return Vector(1, 0); },
+            Gaussian(0.4),
+            Point(-1.1, 0.8),
+            Point(-1.1, -0.8)
     );
 
-    laser.generateRays(21);
-    laser.generateIntersections(mesh, SnellsLaw(densityMeshFunction), StopAtCritical(densityMeshFunction));
+    laser.generateRays(1000);
+    laser.generateIntersections(mesh, continueStraight, StopAtCritical(densityMeshFunction));
 
     EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
     for (const auto &laserRay : laser.getRays()) {
