@@ -12,12 +12,12 @@ using namespace raytracer::physics;
 
 struct StopAtCritical {
     explicit StopAtCritical(const MeshFunction &density) :
-    density(density) {}
+            density(density) {}
 
     bool operator()(const Intersection &intersection, const LaserRay &laserRay) {
         const auto element = *intersection.nextElement;
 
-        auto currentDensity = density[element];
+        auto currentDensity = density.getValue(element);
         auto criticalDensity = laserRay.getCriticalDensity();
         return currentDensity > criticalDensity.asDouble;
     }
@@ -33,14 +33,14 @@ std::unique_ptr<Intersection> continueStraight(const Intersection &intersection)
 
 class GradientCalculator {
 public:
-    virtual Vector getGradient(const MeshFunction &, const Point&) const = 0;
+    virtual Vector getGradient(const MeshFunction &, const Point &) const = 0;
 };
 
 class ConstantGradientCalculator : public GradientCalculator {
 public:
-    explicit ConstantGradientCalculator(const Vector& gradient): gradient(gradient) {}
+    explicit ConstantGradientCalculator(const Vector &gradient) : gradient(gradient) {}
 
-    Vector getGradient(const MeshFunction &, const Point&) const override {
+    Vector getGradient(const MeshFunction &, const Point &) const override {
         return this->gradient;
     }
 
@@ -49,7 +49,7 @@ private:
 };
 
 struct SnellsLaw {
-    explicit SnellsLaw(const MeshFunction &density, const GradientCalculator& gradientCalculator) :
+    explicit SnellsLaw(const MeshFunction &density, const GradientCalculator &gradientCalculator) :
             density(density), gradientCalculator(gradientCalculator) {}
 
     std::unique_ptr<Intersection> operator()(const Intersection &intersection, const LaserRay &laserRay) {
@@ -67,31 +67,32 @@ struct SnellsLaw {
         newIntersection->orientation.direction = getDirection(intersection, laserRay.getCriticalDensity());
         return newIntersection;
     }
+
 private:
     const MeshFunction &density;
     const GradientCalculator &gradientCalculator;
 
-    Vector getDirection(const Intersection &intersection, Density criticalDensity){
-        const double n1 = std::sqrt(1 - density[*intersection.previousElement] / criticalDensity.asDouble);
-        const double n2 = std::sqrt(1 - density[*intersection.nextElement] / criticalDensity.asDouble);
+    Vector getDirection(const Intersection &intersection, Density criticalDensity) {
+        const double n1 = std::sqrt(1 - density.getValue(*intersection.previousElement) / criticalDensity.asDouble);
+        const double n2 = std::sqrt(1 - density.getValue(*intersection.nextElement) / criticalDensity.asDouble);
 
         const auto gradient = gradientCalculator.getGradient(density, intersection.orientation.point);
-        const auto& direction = intersection.orientation.direction;
+        const auto &direction = intersection.orientation.direction;
 
-        const auto l = 1/direction.getNorm() * direction;
-        auto n = 1/gradient.getNorm() * gradient;
+        const auto l = 1 / direction.getNorm() * direction;
+        auto n = 1 / gradient.getNorm() * gradient;
         auto c = (-1) * n * l;
-        if (c < 0){
+        if (c < 0) {
             c = -c;
             n = (-1) * n;
         }
         const double r = n1 / n2;
 
-        auto root = 1 - r*r * (1 - c*c);
+        auto root = 1 - r * r * (1 - c * c);
         if (root > 0) {
-            return r * l + (r*c - std::sqrt(root))*n;
+            return r * l + (r * c - std::sqrt(root)) * n;
         } else {
-            return l + 2*c*n;
+            return l + 2 * c * n;
         }
     }
 };
@@ -102,16 +103,17 @@ double density(const mfem::Vector &x) {
 }
 
 struct EndAbsorber {
-    explicit EndAbsorber(MeshFunction& absorbedEnergy): absorbedEnergy(absorbedEnergy) {}
+    explicit EndAbsorber(MeshFunction &absorbedEnergy) : absorbedEnergy(absorbedEnergy) {}
 
     void operator()(const LaserRay &laserRay) {
         const auto &intersection = laserRay.intersections.back();
         const auto element = intersection.previousElement;
         if (!element) return;
-        absorbedEnergy[*element] += laserRay.energy.asDouble;
+        absorbedEnergy.addValue(*element, laserRay.energy.asDouble);
     }
+
 private:
-    MeshFunction& absorbedEnergy;
+    MeshFunction &absorbedEnergy;
 };
 
 int main(int, char *[]) {
@@ -155,7 +157,7 @@ int main(int, char *[]) {
 
     laser.generateRays(1);
     laser.generateIntersections(
-            mesh,SnellsLaw(densityMeshFunction, gradientCalculator),
+            mesh, SnellsLaw(densityMeshFunction, gradientCalculator),
             StopAtCritical(densityMeshFunction));
 
     EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
@@ -164,7 +166,7 @@ int main(int, char *[]) {
     }
 
     auto end = std::chrono::high_resolution_clock::now();
-    auto nanosecondDuration = std::chrono::duration_cast<std::chrono::nanoseconds>( end - start ).count();
+    auto nanosecondDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
     auto duration = nanosecondDuration * 1e-9;
 
     std::cout << "Execution took: " << duration << "s." << std::endl;
