@@ -26,26 +26,88 @@ private:
     const MeshFunction &density;
 };
 
+struct DontStop {
+    bool operator()(const Intersection&, const LaserRay&) {
+        return false;
+    }
+};
 
-std::unique_ptr<Intersection> continueStraight(const Intersection &intersection) {
+
+std::unique_ptr<Intersection> continueStraight(const Intersection &intersection, const LaserRay &) {
     return findClosestIntersection(intersection.orientation, intersection.nextElement->getFaces(), intersection.face);
 }
 
 class GradientCalculator {
 public:
-    virtual Vector getGradient(const MeshFunction &, const Point &) const = 0;
+    virtual Vector getGradient(const Intersection &) const = 0;
 };
 
 class ConstantGradientCalculator : public GradientCalculator {
 public:
     explicit ConstantGradientCalculator(const Vector &gradient) : gradient(gradient) {}
 
-    Vector getGradient(const MeshFunction &, const Point &) const override {
+    Vector getGradient(const Intersection &) const override {
         return this->gradient;
     }
 
 private:
     const Vector gradient;
+};
+
+class H1GradientCalculator : public GradientCalculator {
+public:
+    H1GradientCalculator(mfem::FiniteElementSpace &l2Space, mfem::FiniteElementSpace &h1Space):
+            l2Space(l2Space), h1Space(h1Space), _density(&h1Space) {}
+
+    Vector getGradient(const Intersection &intersection) const override {
+        auto point = intersection.orientation.point;
+        auto previousGradient = this->getGradientAt(*intersection.previousElement, point);
+        auto nextGradient = this->getGradientAt(*intersection.nextElement, point);
+        return 0.5 * (previousGradient + nextGradient);
+    }
+
+    void updateDensity(mfem::GridFunction& density){
+        this->_density = convertH1toL2(density);
+    }
+
+private:
+    mfem::FiniteElementSpace &l2Space;
+    mfem::FiniteElementSpace &h1Space;
+    mfem::GridFunction _density;
+
+    Vector getGradientAt(const Element& element, const Point& point) const {
+        mfem::Vector result(2);
+        mfem::IntegrationPoint integrationPoint{};
+        integrationPoint.Set2(point.x, point.y);
+
+        auto transformation = this->h1Space.GetElementTransformation(element.id);
+        transformation->SetIntPoint(&integrationPoint);
+        this->_density.GetGradient(*transformation, result);
+
+        return {result[0], result[1]};
+    }
+
+    mfem::GridFunction convertH1toL2(const mfem::GridFunction &function) {
+        mfem::BilinearForm A(&h1Space);
+        A.AddDomainIntegrator(new mfem::MassIntegrator);
+        A.Assemble();
+        A.Finalize();
+
+        mfem::MixedBilinearForm B(&l2Space, &h1Space);
+        B.AddDomainIntegrator(new mfem::MassIntegrator);
+        B.Assemble();
+        B.Finalize();
+
+        mfem::LinearForm b(&h1Space);
+        B.Mult(function, b);
+
+        mfem::DSmoother smoother(A.SpMat());
+
+        mfem::GridFunction result(&h1Space);
+        result = 0;
+        mfem::PCG(A, smoother, b, result);
+        return result;
+    }
 };
 
 struct SnellsLaw {
@@ -64,6 +126,8 @@ struct SnellsLaw {
                 intersection.orientation,
                 nextElement->getFaces(),
                 intersection.face);
+        if (!newIntersection)
+            return newIntersection;
         newIntersection->orientation.direction = getDirection(intersection, laserRay.getCriticalDensity());
         return newIntersection;
     }
@@ -76,7 +140,7 @@ private:
         const double n1 = std::sqrt(1 - density.getValue(*intersection.previousElement) / criticalDensity.asDouble);
         const double n2 = std::sqrt(1 - density.getValue(*intersection.nextElement) / criticalDensity.asDouble);
 
-        const auto gradient = gradientCalculator.getGradient(density, intersection.orientation.point);
+        const auto gradient = gradientCalculator.getGradient(intersection);
         const auto &direction = intersection.orientation.direction;
 
         const auto l = 1 / direction.getNorm() * direction;
@@ -120,45 +184,50 @@ int main(int, char *[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    //DiscreteLine side{};
-    //side.segmentCount = 100;
-    //side.length = 1;
-    //auto mfemMesh = constructRectangleMesh(side, side);
+    DiscreteLine side{};
+    side.segmentCount = 100;
+    side.length = 1;
+    auto mfemMesh = constructRectangleMesh(side, side);
 
-    auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
+    //auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
 
 
-    mfem::L2_FECollection finiteElementCollection(0, 2);
-    mfem::FiniteElementSpace finiteElementSpace(mfemMesh.get(), &finiteElementCollection);
+    mfem::L2_FECollection l2FiniteElementCollection(0, 2);
+    mfem::H1_FECollection h1FiniteElementCollection(1, 2);
+    mfem::FiniteElementSpace l2FiniteElementSpace(mfemMesh.get(), &l2FiniteElementCollection);
+    mfem::FiniteElementSpace h1FiniteElementSpace(mfemMesh.get(), &h1FiniteElementCollection);
 
-    mfem::GridFunction densityGridFunction(&finiteElementSpace);
+    mfem::GridFunction densityGridFunction(&l2FiniteElementSpace);
     mfem::FunctionCoefficient densityFunctionCoefficient(density);
     densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
 
-    mfem::GridFunction absorbedEnergyGridFunction(&finiteElementSpace);
+    mfem::GridFunction absorbedEnergyGridFunction(&l2FiniteElementSpace);
     absorbedEnergyGridFunction = 0;
     //End of MFEM boilerplate ------------------------------------------------------------------------------------------
 
     Mesh mesh(mfemMesh.get());
-    MeshFunction densityMeshFunction(densityGridFunction, finiteElementSpace);
-    MeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, finiteElementSpace);
+    MeshFunction densityMeshFunction(densityGridFunction, l2FiniteElementSpace);
+    MeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
 
-    ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
+    //ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
+    H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
+    gradientCalculator.updateDensity(densityGridFunction);
 
     auto start = std::chrono::high_resolution_clock::now();
 
     Laser laser(
             Length{1315e-7},
-            [](const Point) { return Vector(1, -0.3); },
+            [](const Point) { return Vector(1, 0.2); },
             Gaussian(0.1),
-            Point(-1.1, 0.9),
-            Point(-1.1, 0.7)
+            Point(-0.1, 0.2),
+            Point(-0.1, 0.1)
     );
 
-    laser.generateRays(1);
+    laser.generateRays(100);
     laser.generateIntersections(
             mesh, SnellsLaw(densityMeshFunction, gradientCalculator),
-            StopAtCritical(densityMeshFunction));
+            DontStop());
+            //StopAtCritical(densityMeshFunction));
 
     EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
     for (const auto &laserRay : laser.getRays()) {
@@ -178,5 +247,6 @@ int main(int, char *[]) {
     int visport = 19916;
     mfem::socketstream sol_sock(vishost, visport);
     sol_sock.precision(8);
-    sol_sock << "solution\n" << *mfemMesh << absorbedEnergyGridFunction << std::flush;
+    //sol_sock << "solution\n" << *mfemMesh << absorbedEnergyGridFunction << std::flush;
+    sol_sock << "solution\n" << *mfemMesh << densityGridFunction << std::flush;
 }
