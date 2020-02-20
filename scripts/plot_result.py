@@ -17,4 +17,5 @@ if __name__ == "__main__":
 
         plt.plot(x, y, "o-")
 
+    plt.axis('equal')
     plt.show()
