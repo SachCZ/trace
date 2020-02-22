@@ -34,12 +34,12 @@ int main(int, char *[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    DiscreteLine side{};
-    side.segmentCount = 100;
-    side.length = 1;
-    auto mfemMesh = constructRectangleMesh(side, side);
+    //DiscreteLine side{};
+    //side.segmentCount = 100;
+    //side.length = 1;
+    //auto mfemMesh = constructRectangleMesh(side, side);
 
-    //auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
+    auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
 
 
     mfem::L2_FECollection l2FiniteElementCollection(0, 2);
@@ -56,8 +56,8 @@ int main(int, char *[]) {
     //End of MFEM boilerplate ------------------------------------------------------------------------------------------
 
     Mesh mesh(mfemMesh.get());
-    MeshFunction densityMeshFunction(densityGridFunction, l2FiniteElementSpace);
-    MeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction densityMeshFunction(densityGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
 
     //ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
     H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
@@ -67,10 +67,10 @@ int main(int, char *[]) {
 
     Laser laser(
             Length{1315e-7},
-            [](const Point) { return Vector(1, 1); },
+            [](const Point) { return Vector(1, 0.3); },
             Gaussian(0.1),
-            Point(-0.1, 0.3),
-            Point(-0.1, 0.1)
+            Point(-1.1, -0.4),
+            Point(-1.1, -0.8)
     );
 
     laser.generateRays(100);
