@@ -16,6 +16,14 @@ double density(const mfem::Vector &x) {
     return 12.8e20 * x(0);
 }
 
+double temperature(const mfem::Vector &) {
+    return 40;
+}
+
+double ionization(const mfem::Vector &) {
+    return 22;
+}
+
 struct EndAbsorber {
     explicit EndAbsorber(MeshFunction &absorbedEnergy) : absorbedEnergy(absorbedEnergy) {}
 
@@ -29,9 +37,6 @@ struct EndAbsorber {
 private:
     MeshFunction &absorbedEnergy;
 };
-
-
-
 
 
 int main(int, char *[]) {
@@ -51,21 +56,42 @@ int main(int, char *[]) {
     mfem::FiniteElementSpace l2FiniteElementSpace(mfemMesh.get(), &l2FiniteElementCollection);
     mfem::FiniteElementSpace h1FiniteElementSpace(mfemMesh.get(), &h1FiniteElementCollection);
 
-    mfem::GridFunction densityGridFunction(&l2FiniteElementSpace);
-    mfem::FunctionCoefficient densityFunctionCoefficient(density);
-    densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
-
     mfem::GridFunction absorbedEnergyGridFunction(&l2FiniteElementSpace);
     absorbedEnergyGridFunction = 0;
     //End of MFEM boilerplate ------------------------------------------------------------------------------------------
 
     Mesh mesh(mfemMesh.get());
+
+    //Density
+    mfem::GridFunction densityGridFunction(&l2FiniteElementSpace);
+    mfem::FunctionCoefficient densityFunctionCoefficient(density);
+    densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
     MfemMeshFunction densityMeshFunction(densityGridFunction, l2FiniteElementSpace);
+
+    mfem::GridFunction temperatureGridFunction(&l2FiniteElementSpace);
+    mfem::FunctionCoefficient temperatureFunctionCoefficient(temperature);
+    temperatureGridFunction.ProjectCoefficient(temperatureFunctionCoefficient);
+    MfemMeshFunction temperatureMeshFunction(temperatureGridFunction, l2FiniteElementSpace);
+
+    mfem::GridFunction ionizationGridFunction(&l2FiniteElementSpace);
+    mfem::FunctionCoefficient ionizationFunctionCoefficient(ionization);
+    ionizationGridFunction.ProjectCoefficient(ionizationFunctionCoefficient);
+    MfemMeshFunction ionizationMeshFunction(ionizationGridFunction, l2FiniteElementSpace);
+
     MfemMeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
 
     //ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
     H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
     gradientCalculator.updateDensity(densityGridFunction);
+
+    SpitzerFrequencyCalculator spitzerFrequencyCalculator;
+    SnellsLaw snellsLaw(
+            densityMeshFunction,
+            temperatureMeshFunction,
+            ionizationMeshFunction,
+            gradientCalculator,
+            spitzerFrequencyCalculator
+    );
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -79,7 +105,7 @@ int main(int, char *[]) {
 
     laser.generateRays(100);
     laser.generateIntersections(
-            mesh, SnellsLaw(densityMeshFunction, gradientCalculator),
+            mesh, snellsLaw,
             DontStop());
 
     EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
