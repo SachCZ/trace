@@ -30,6 +30,10 @@ private:
     MeshFunction &absorbedEnergy;
 };
 
+
+
+
+
 int main(int, char *[]) {
 
 
@@ -77,7 +81,6 @@ int main(int, char *[]) {
     laser.generateIntersections(
             mesh, SnellsLaw(densityMeshFunction, gradientCalculator),
             DontStop());
-            //StopAtCritical(densityMeshFunction));
 
     EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
     for (const auto &laserRay : laser.getRays()) {
