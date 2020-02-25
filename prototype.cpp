@@ -12,15 +12,15 @@
 using namespace raytracer::geometry;
 using namespace raytracer::physics;
 
-double density(const mfem::Vector &x) {
-    return 12.8e20 * x(0);
+double densityFunction(const mfem::Vector &x) {
+    return 12.8e26 * x(0);
 }
 
-double temperature(const mfem::Vector &) {
-    return 40;
+double temperatureFunction(const mfem::Vector &) {
+    return 450;
 }
 
-double ionization(const mfem::Vector &) {
+double ionizationFunction(const mfem::Vector &) {
     return 22;
 }
 
@@ -38,17 +38,65 @@ private:
     MeshFunction &absorbedEnergy;
 };
 
+struct BremsstrahlungAbsorber {
+    explicit BremsstrahlungAbsorber(
+            MeshFunction &absorbedEnergy,
+            const MeshFunction &density,
+            const MeshFunction &temperature,
+            const MeshFunction &ionization
+    ) :
+            absorbedEnergy(absorbedEnergy),
+            _density(density),
+            _temperature(temperature),
+            _ionization(ionization) {}
+
+    void operator()(const LaserRay &laserRay) {
+        const auto &intersections = laserRay.intersections;
+        auto intersectionIt = std::next(std::begin(intersections));
+        auto previousIntersectionIt = std::begin(intersections);
+
+        auto laserEnergy = laserRay.energy.asDouble;
+
+        for (; intersectionIt != std::end(intersections); ++intersectionIt, ++previousIntersectionIt) {
+            const auto &element = intersectionIt->previousElement;
+            if (!element) continue;
+            const auto &previousPoint = previousIntersectionIt->orientation.point;
+            const auto &point = intersectionIt->orientation.point;
+
+            const auto distance = (point - previousPoint).getNorm();
+            const auto density = Density{this->_density.getValue(*element)};
+            const auto temperature = Temperature{this->_temperature.getValue(*element)};
+            const auto ionization = this->_ionization.getValue(*element);
+
+            SpitzerFrequencyCalculator frequencyCalculator;
+            auto frequency = frequencyCalculator.getCollisionalFrequency(density, temperature, laserRay.wavelength,
+                                                                         ionization);
+            const auto exponent = -laserRay.getInverseBremsstrahlungCoeff(density, frequency) * distance;
+
+            auto newEnergy = laserEnergy * std::exp(exponent);
+            auto absorbed = laserEnergy - newEnergy;
+            absorbedEnergy.addValue(*element, absorbed);
+            laserEnergy = newEnergy;
+        }
+    }
+
+private:
+    MeshFunction &absorbedEnergy;
+    const MeshFunction &_density;
+    const MeshFunction &_temperature;
+    const MeshFunction &_ionization;
+};
 
 int main(int, char *[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    //DiscreteLine side{};
-    //side.segmentCount = 100;
-    //side.length = 1;
-    //auto mfemMesh = constructRectangleMesh(side, side);
+    DiscreteLine side{};
+    side.segmentCount = 100;
+    side.length = 1e-6;
+    auto mfemMesh = constructRectangleMesh(side, side);
 
-    auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
+    //auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
 
 
     mfem::L2_FECollection l2FiniteElementCollection(0, 2);
@@ -64,17 +112,17 @@ int main(int, char *[]) {
 
     //Density
     mfem::GridFunction densityGridFunction(&l2FiniteElementSpace);
-    mfem::FunctionCoefficient densityFunctionCoefficient(density);
+    mfem::FunctionCoefficient densityFunctionCoefficient(densityFunction);
     densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
     MfemMeshFunction densityMeshFunction(densityGridFunction, l2FiniteElementSpace);
 
     mfem::GridFunction temperatureGridFunction(&l2FiniteElementSpace);
-    mfem::FunctionCoefficient temperatureFunctionCoefficient(temperature);
+    mfem::FunctionCoefficient temperatureFunctionCoefficient(temperatureFunction);
     temperatureGridFunction.ProjectCoefficient(temperatureFunctionCoefficient);
     MfemMeshFunction temperatureMeshFunction(temperatureGridFunction, l2FiniteElementSpace);
 
     mfem::GridFunction ionizationGridFunction(&l2FiniteElementSpace);
-    mfem::FunctionCoefficient ionizationFunctionCoefficient(ionization);
+    mfem::FunctionCoefficient ionizationFunctionCoefficient(ionizationFunction);
     ionizationGridFunction.ProjectCoefficient(ionizationFunctionCoefficient);
     MfemMeshFunction ionizationMeshFunction(ionizationGridFunction, l2FiniteElementSpace);
 
@@ -99,8 +147,8 @@ int main(int, char *[]) {
             Length{1315e-7},
             [](const Point) { return Vector(1, 0.3); },
             Gaussian(0.1),
-            Point(-1.1, -0.4),
-            Point(-1.1, -0.8)
+            Point(-0.1e-6, 0.5e-6),
+            Point(-0.1e-6, 0)
     );
 
     laser.generateRays(100);
@@ -108,9 +156,14 @@ int main(int, char *[]) {
             mesh, snellsLaw,
             DontStop());
 
-    EndAbsorber endAbsorber(absorbedEnergyMeshFunction);
+    BremsstrahlungAbsorber bremsstrahlungAbsorber(
+            absorbedEnergyMeshFunction,
+            densityMeshFunction,
+            temperatureMeshFunction,
+            ionizationMeshFunction
+    );
     for (const auto &laserRay : laser.getRays()) {
-        endAbsorber(laserRay);
+        bremsstrahlungAbsorber(laserRay);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -126,6 +179,6 @@ int main(int, char *[]) {
     int visport = 19916;
     mfem::socketstream sol_sock(vishost, visport);
     sol_sock.precision(8);
-    //sol_sock << "solution\n" << *mfemMesh << absorbedEnergyGridFunction << std::flush;
-    sol_sock << "solution\n" << *mfemMesh << densityGridFunction << std::flush;
+    sol_sock << "solution\n" << *mfemMesh << absorbedEnergyGridFunction << std::flush;
+    //sol_sock << "solution\n" << *mfemMesh << densityGridFunction << std::flush;
 }

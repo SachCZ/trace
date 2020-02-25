@@ -79,7 +79,7 @@ private:
 };
 
 
-double density(const mfem::Vector &x) {
+double densityFunction(const mfem::Vector &x) {
     return 12.8e20 * x(0);
 }
 
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     mfem::FiniteElementSpace finiteElementSpace(mfemMesh.get(), &finiteElementCollection);
 
     mfem::GridFunction densityGridFunction(&finiteElementSpace);
-    mfem::FunctionCoefficient densityFunctionCoefficient(density);
+    mfem::FunctionCoefficient densityFunctionCoefficient(densityFunction);
     densityGridFunction.ProjectCoefficient(densityFunctionCoefficient);
 
     mfem::GridFunction absorbedEnergyGridFunction(&finiteElementSpace);
