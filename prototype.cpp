@@ -17,71 +17,96 @@ double densityFunction(const mfem::Vector &x) {
 }
 
 double temperatureFunction(const mfem::Vector &) {
-    return 450;
+    return 250;
 }
 
 double ionizationFunction(const mfem::Vector &) {
     return 22;
 }
 
-struct EndAbsorber {
-    explicit EndAbsorber(MeshFunction &absorbedEnergy) : absorbedEnergy(absorbedEnergy) {}
-
-    void operator()(const LaserRay &laserRay) {
-        const auto &intersection = laserRay.intersections.back();
-        const auto element = intersection.previousElement;
-        if (!element) return;
-        absorbedEnergy.addValue(*element, laserRay.energy.asDouble);
-    }
-
-private:
-    MeshFunction &absorbedEnergy;
+class AbsorptionModel {
+public:
+    virtual Energy getEnergyChange(
+            const Intersection &previousIntersection,
+            const Intersection &currentIntersection,
+            const Energy &currentEnergy,
+            const LaserRay& laserRay
+    ) const = 0;
 };
 
-struct BremsstrahlungAbsorber {
-    explicit BremsstrahlungAbsorber(
-            MeshFunction &absorbedEnergy,
-            const MeshFunction &density,
-            const MeshFunction &temperature,
-            const MeshFunction &ionization
-    ) :
-            absorbedEnergy(absorbedEnergy),
-            _density(density),
-            _temperature(temperature),
-            _ionization(ionization) {}
+class EnergyAbsorber {
+public:
+    void addModel(const AbsorptionModel* model) {
+        models.emplace_back(model);
+    }
 
-    void operator()(const LaserRay &laserRay) {
-        const auto &intersections = laserRay.intersections;
-        auto intersectionIt = std::next(std::begin(intersections));
-        auto previousIntersectionIt = std::begin(intersections);
-
-        auto laserEnergy = laserRay.energy.asDouble;
-
-        for (; intersectionIt != std::end(intersections); ++intersectionIt, ++previousIntersectionIt) {
-            const auto &element = intersectionIt->previousElement;
-            if (!element) continue;
-            const auto &previousPoint = previousIntersectionIt->orientation.point;
-            const auto &point = intersectionIt->orientation.point;
-
-            const auto distance = (point - previousPoint).getNorm();
-            const auto density = Density{this->_density.getValue(*element)};
-            const auto temperature = Temperature{this->_temperature.getValue(*element)};
-            const auto ionization = this->_ionization.getValue(*element);
-
-            SpitzerFrequencyCalculator frequencyCalculator;
-            auto frequency = frequencyCalculator.getCollisionalFrequency(density, temperature, laserRay.wavelength,
-                                                                         ionization);
-            const auto exponent = -laserRay.getInverseBremsstrahlungCoeff(density, frequency) * distance;
-
-            auto newEnergy = laserEnergy * std::exp(exponent);
-            auto absorbed = laserEnergy - newEnergy;
-            absorbedEnergy.addValue(*element, absorbed);
-            laserEnergy = newEnergy;
+    void absorb(const Laser &laser, MeshFunction &absorbedEnergy) {
+        for (const auto &laserRay : laser.getRays()) {
+            this->absorbLaserRay(laserRay, absorbedEnergy);
         }
     }
 
 private:
-    MeshFunction &absorbedEnergy;
+    std::vector<const AbsorptionModel*> models{};
+
+    void absorbLaserRay(const LaserRay &laserRay, MeshFunction &absorbedEnergy) {
+        const auto &intersections = laserRay.intersections;
+        auto intersectionIt = std::next(std::begin(intersections));
+        auto previousIntersectionIt = std::begin(intersections);
+
+        auto currentEnergy = laserRay.energy.asDouble;
+
+        for (; intersectionIt != std::end(intersections); ++intersectionIt, ++previousIntersectionIt) {
+            for (const auto &model : this->models) {
+                auto absorbed = model->getEnergyChange(
+                        *previousIntersectionIt,
+                        *intersectionIt,
+                        Energy{currentEnergy},
+                        laserRay
+                ).asDouble;
+                currentEnergy -= absorbed;
+                absorbedEnergy.addValue(*(intersectionIt->previousElement), absorbed);
+            }
+        }
+    }
+};
+
+struct BremsstrahlungModel : public AbsorptionModel {
+    explicit BremsstrahlungModel(
+            const MeshFunction &density,
+            const MeshFunction &temperature,
+            const MeshFunction &ionization
+    ) :
+            _density(density),
+            _temperature(temperature),
+            _ionization(ionization) {}
+
+    Energy getEnergyChange(
+            const Intersection &previousIntersection,
+            const Intersection &currentIntersection,
+            const Energy &currentEnergy,
+            const LaserRay& laserRay
+            ) const override {
+        const auto &element = currentIntersection.previousElement;
+        if (!element) return Energy{0};
+        const auto &previousPoint = previousIntersection.orientation.point;
+        const auto &point = currentIntersection.orientation.point;
+
+        const auto distance = (point - previousPoint).getNorm();
+        const auto density = Density{this->_density.getValue(*element)};
+        const auto temperature = Temperature{this->_temperature.getValue(*element)};
+        const auto ionization = this->_ionization.getValue(*element);
+
+        SpitzerFrequencyCalculator frequencyCalculator;
+        auto frequency = frequencyCalculator.getCollisionalFrequency(density, temperature, laserRay.wavelength,
+                                                                     ionization);
+        const auto exponent = -laserRay.getInverseBremsstrahlungCoeff(density, frequency) * distance;
+
+        auto newEnergy = currentEnergy.asDouble * std::exp(exponent);
+        return Energy{currentEnergy.asDouble - newEnergy};
+    }
+
+private:
     const MeshFunction &_density;
     const MeshFunction &_temperature;
     const MeshFunction &_ionization;
@@ -156,15 +181,10 @@ int main(int, char *[]) {
             mesh, snellsLaw,
             DontStop());
 
-    BremsstrahlungAbsorber bremsstrahlungAbsorber(
-            absorbedEnergyMeshFunction,
-            densityMeshFunction,
-            temperatureMeshFunction,
-            ionizationMeshFunction
-    );
-    for (const auto &laserRay : laser.getRays()) {
-        bremsstrahlungAbsorber(laserRay);
-    }
+    EnergyAbsorber absorber;
+    BremsstrahlungModel bremsstrahlungModel(densityMeshFunction, temperatureMeshFunction, ionizationMeshFunction);
+    absorber.addModel(&bremsstrahlungModel);
+    absorber.absorb(laser, absorbedEnergyMeshFunction);
 
     auto end = std::chrono::high_resolution_clock::now();
     auto nanosecondDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
