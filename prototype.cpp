@@ -17,12 +17,19 @@ double densityFunction(const mfem::Vector &x) {
 }
 
 double temperatureFunction(const mfem::Vector &) {
-    return 250;
+    return 20;
 }
 
 double ionizationFunction(const mfem::Vector &) {
-    return 22;
+    return 0;
 }
+
+class StepGradient : public GradientCalculator {
+public:
+    Vector getGradient(const Intersection &intersection) const override {
+        return intersection.face->getNormal();
+    }
+};
 
 class AbsorptionModel {
 public:
@@ -116,12 +123,12 @@ int main(int, char *[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    DiscreteLine side{};
-    side.segmentCount = 100;
-    side.length = 1e-6;
-    auto mfemMesh = constructRectangleMesh(side, side);
+    //DiscreteLine side{};
+    //side.segmentCount = 100;
+    //side.length = 1e-6;
+    //auto mfemMesh = constructRectangleMesh(side, side);
 
-    //auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
+    auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh_small.vtk", 1, 0);
 
 
     mfem::L2_FECollection l2FiniteElementCollection(0, 2);
@@ -154,8 +161,9 @@ int main(int, char *[]) {
     MfemMeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
 
     //ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
-    H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
-    gradientCalculator.updateDensity(densityGridFunction);
+    //H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
+    StepGradient gradientCalculator;
+    //gradientCalculator.updateDensity(densityGridFunction);
 
     SpitzerFrequencyCalculator spitzerFrequencyCalculator;
     SnellsLaw snellsLaw(
