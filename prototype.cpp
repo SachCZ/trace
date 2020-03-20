@@ -13,23 +13,17 @@ using namespace raytracer::geometry;
 using namespace raytracer::physics;
 
 double densityFunction(const mfem::Vector &x) {
+    //return 12.8e20 * x(0) + 12.8e20;
     return 12.8e26 * x(0);
 }
 
 double temperatureFunction(const mfem::Vector &) {
-    return 20;
+    return 200;
 }
 
 double ionizationFunction(const mfem::Vector &) {
-    return 0;
+    return 22;
 }
-
-class StepGradient : public GradientCalculator {
-public:
-    Vector getGradient(const Intersection &intersection) const override {
-        return intersection.face->getNormal();
-    }
-};
 
 class AbsorptionModel {
 public:
@@ -96,8 +90,8 @@ struct BremsstrahlungModel : public AbsorptionModel {
             ) const override {
         const auto &element = currentIntersection.previousElement;
         if (!element) return Energy{0};
-        const auto &previousPoint = previousIntersection.orientation.point;
-        const auto &point = currentIntersection.orientation.point;
+        const auto &previousPoint = previousIntersection.pointOnFace.point;
+        const auto &point = currentIntersection.pointOnFace.point;
 
         const auto distance = (point - previousPoint).getNorm();
         const auto density = Density{this->_density.getValue(*element)};
@@ -123,12 +117,12 @@ int main(int, char *[]) {
 
 
     //MFEM boilerplate -------------------------------------------------------------------------------------------------
-    //DiscreteLine side{};
-    //side.segmentCount = 100;
-    //side.length = 1e-6;
-    //auto mfemMesh = constructRectangleMesh(side, side);
+    DiscreteLine side{};
+    side.segmentCount = 100;
+    side.length = 1e-6;
+    auto mfemMesh = constructRectangleMesh(side, side);
 
-    auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh_small.vtk", 1, 0);
+    //auto mfemMesh = std::make_unique<mfem::Mesh>("test_mesh.vtk", 1, 0);
 
 
     mfem::L2_FECollection l2FiniteElementCollection(0, 2);
@@ -161,9 +155,9 @@ int main(int, char *[]) {
     MfemMeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
 
     //ConstantGradientCalculator gradientCalculator(Vector(12.8e20, 0));
-    //H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
-    StepGradient gradientCalculator;
-    //gradientCalculator.updateDensity(densityGridFunction);
+    H1GradientCalculator gradientCalculator(l2FiniteElementSpace, h1FiniteElementSpace);
+    //StepGradient gradientCalculator;
+    gradientCalculator.updateDensity(densityGridFunction);
 
     SpitzerFrequencyCalculator spitzerFrequencyCalculator;
     SnellsLaw snellsLaw(
@@ -178,16 +172,14 @@ int main(int, char *[]) {
 
     Laser laser(
             Length{1315e-7},
-            [](const Point) { return Vector(1, 0.3); },
-            Gaussian(0.1),
-            Point(-0.1e-6, 0.5e-6),
-            Point(-0.1e-6, 0)
+            [](const Point) { return Vector(1, 0.1); },
+            Gaussian(0.1e-6),
+            Point(-0.1e-6, 0.4e-6),
+            Point(-0.1e-6, 0.1e-6)
     );
 
     laser.generateRays(100);
-    laser.generateIntersections(
-            mesh, snellsLaw,
-            DontStop());
+    laser.generateIntersections(mesh, snellsLaw, intersectStraight,DontStop());
 
     EnergyAbsorber absorber;
     BremsstrahlungModel bremsstrahlungModel(densityMeshFunction, temperatureMeshFunction, ionizationMeshFunction);
