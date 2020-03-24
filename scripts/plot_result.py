@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 
-import json
 import sys
 import matplotlib.pyplot as plt
-import numpy as np
+import scripts.vis_utils as vis_utils
 
 if __name__ == "__main__":
-    rays_filename = sys.argv[1]
-    with open(rays_filename) as rays_file:
-        rays_root = json.load(rays_file)
-    rays = rays_root["rays"]
-    for ray in rays:
-        ray = np.asarray(ray)
-        x = ray[:, 0]
-        y = ray[:, 1]
+    _, axis = plt.subplots()
+    vis_utils.plot_rays(axis, vis_utils.read_rays(sys.argv[1]))
 
-        plt.plot(x, y, "o-")
+    nodes, elements = vis_utils.read_vtk(sys.argv[2])
+    vis_utils.plot_vtk_mesh(axis, nodes, elements)
 
+    plt.axis('equal')
+    plt.show()
+
+    fig, axis = plt.subplots()
+    values = vis_utils.read_grid_function(sys.argv[3])
+    vis_utils.plot_grid_function(fig, axis, nodes, elements, values)
+    #vis_utils.plot_rays(axis, vis_utils.read_rays(sys.argv[1]))
     plt.axis('equal')
     plt.show()
