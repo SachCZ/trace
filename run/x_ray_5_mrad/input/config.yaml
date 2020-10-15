@@ -1,0 +1,23 @@
+mesh_file: "./input/mesh.mesh"
+density_file: "./input/density.gf"
+temperature_file: "./input/temperature.gf"
+ionization_file: "./input/ionization.gf"
+gain_file: "./input/gain.gf"
+lasers:
+  - wavelength: 25.5e-7
+    direction:
+      x: -0.005 # 5 mrad
+      y: 1
+    spatial_FWHM: 10e-4
+    energy: 1
+    start_point:
+      x: 10e-4
+      y: -1e-4
+    end_point:
+      x: 50e-4
+      y: -1e-4
+    rays_count: 1001
+    estimate_bremsstrahlung: false
+    estimate_resonance: false
+    estimate_gain: true
+    gradient_type: "ls"

@@ -1,3 +1,0 @@
-[submodule "external/raytracer"]
-	path = external/raytracer
-	url = https://github.com/SachCZ/raytracer
