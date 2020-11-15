@@ -35,7 +35,18 @@ def main():
     axes.loglog(h_eff, h_eff ** 2)
 
     fig, axes = plt.subplots()
-    rayvis.plot_vector_field(axes, vector_fields[1])
+    contour = rayvis.plot_vector_field(axes, vector_fields[0])
+    color_bar = fig.colorbar(contour)
+    color_bar.ax.set_ylabel("$|\\vec{G}|$")
+
+    fig, axes = plt.subplots()
+    with open("run/gradient/output/household10.mfem") as f:
+        mesh = rayvis.read_mfem_mesh(f)
+    with open("run/gradient/output/household10.gf") as f:
+        gf = rayvis.read_grid_function(f, mesh)
+    contour = rayvis.plot_grid_function(axes, gf)
+    color_bar = fig.colorbar(contour)
+    color_bar.ax.set_ylabel("$|\\vec{G}|$")
     plt.show()
 
 
