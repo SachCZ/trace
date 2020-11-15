@@ -2,6 +2,7 @@ mesh_file: "./input/mesh.mesh"
 density_file: "./input/density.gf"
 temperature_file: "./input/temperature.gf"
 ionization_file: "./input/ionization.gf"
+gradient_type: "ls"
 lasers:
   - wavelength: 1315e-7
     direction:
@@ -15,8 +16,7 @@ lasers:
     end_point:
       x: 140e-4
       y: -10e-4
-    rays_count: 1001
+    rays_count: 30000
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
-    gradient_type: "h1"

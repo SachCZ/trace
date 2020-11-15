@@ -2,6 +2,7 @@ mesh_file: "./input/mesh.mesh"
 density_file: "./input/density.gf"
 temperature_file: "./input/temperature.gf"
 ionization_file: "./input/ionization.gf"
+gradient_type: "ls"
 lasers:
   - wavelength: 1315e-7
     direction:
@@ -19,7 +20,6 @@ lasers:
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
-    gradient_type: "ls"
   - wavelength: 800e-7
     direction:
      x: -1
@@ -36,7 +36,6 @@ lasers:
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
-    gradient_type: "ls"
   - wavelength: 800e-7
     direction:
       x: -1
@@ -53,7 +52,6 @@ lasers:
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
-    gradient_type: "ls"
   - wavelength: 800e-7
     direction:
       x: -1
@@ -70,4 +68,3 @@ lasers:
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
-    gradient_type: "ls"

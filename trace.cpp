@@ -1,12 +1,4 @@
-#include <raytracer/geometry/Mesh.h>
-#include <raytracer/physics/Laser.h>
-#include <raytracer/geometry/MeshFunction.h>
-#include <raytracer/physics/CollisionalFrequency.h>
-#include <raytracer/physics/Gradient.h>
-#include <raytracer/physics/Refraction.h>
-#include <raytracer/physics/Propagation.h>
-#include <raytracer/physics/Termination.h>
-#include <raytracer/physics/Absorption.h>
+#include <raytracer.h>
 #include "mfem.hpp"
 #include "yaml-cpp/yaml.h"
 
@@ -29,43 +21,39 @@ int main(int, char * argv[]) {
     std::string ionizationFilename = config["ionization_file"].as<std::string>();
     std::string raysOutputFilename = "output/rays.msgpack";
     std::string absorbedEnergyFilename = "output/absorbed_energy.gf";
+    auto gradientType = config["gradient_type"].as<std::string>();
 
-    auto mfemMesh = std::make_unique<mfem::Mesh>(meshFilename.c_str(), 1, 1, false);
-    MfemMesh mesh(mfemMesh.get());
+    MfemMesh mesh(meshFilename);
 
-    mfem::L2_FECollection l2FiniteElementCollection(0, 2);
-    mfem::H1_FECollection h1FiniteElementCollection(1, 2);
-    mfem::FiniteElementSpace l2FiniteElementSpace(mfemMesh.get(), &l2FiniteElementCollection);
-    mfem::FiniteElementSpace h1FiniteElementSpace(mfemMesh.get(), &h1FiniteElementCollection);
+    MfemL20Space space(mesh);
+    //mfem::H1_FECollection h1FiniteElementCollection(1, 2);
+    //mfem::FiniteElementSpace h1FiniteElementSpace(mfemMesh.get(), &h1FiniteElementCollection);
 
-    mfem::GridFunction absorbedEnergyGridFunction(&l2FiniteElementSpace);
-    absorbedEnergyGridFunction = 0;
-    MfemMeshFunction absorbedEnergyMeshFunction(absorbedEnergyGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction absorbedEnergy(space, [](Point){return 0;});
 
     std::ifstream temperatureFile(temperatureFilename);
-    mfem::GridFunction temperatureGridFunction(mfemMesh.get(), temperatureFile);
-    MfemMeshFunction temperatureMeshFunction(temperatureGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction temperature(space, temperatureFile);
 
     std::ifstream ionizationFile(ionizationFilename);
-    mfem::GridFunction ionizationGridFunction(mfemMesh.get(), ionizationFile);
-    MfemMeshFunction ionizationMeshFunction(ionizationGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction ionization(space, ionizationFile);
 
     std::ifstream densityFile(densityFilename);
-    mfem::GridFunction densityGridFunction(mfemMesh.get(), densityFile);
-    double massUnit = 1.6605e-24;
-    double A = 55.845;
-    mfem::Vector electronDensity(densityGridFunction.Size());
-    densityGridFunction.GetTrueDofs(electronDensity);
-    mfem::Vector ionization(ionizationGridFunction.Size());
-    ionizationGridFunction.GetTrueDofs(ionization);
-    for (int i = 0; i < densityGridFunction.Size(); i++){
-        electronDensity[i] = electronDensity[i] * ionization[i] / massUnit / A;
-    }
-    densityGridFunction.SetFromTrueDofs(electronDensity);
-
-    MfemMeshFunction electronDensityMeshFunction(densityGridFunction, l2FiniteElementSpace);
+    MfemMeshFunction density(space, densityFile);
+    MfemMeshFunction eleDens(space, [&](const Element& e) {
+        double massUnit = 1.6605e-24;
+        double A = 55.845;
+        return density.getValue(e) * ionization.getValue(e) / massUnit / A;
+    });
 
     IntersectionSet allIntersections;
+
+    std::unique_ptr<Gradient> gradient;
+    //auto h1Function = projectL2toH1(densityGridFunction, l2FiniteElementSpace, h1FiniteElementSpace);
+    if (gradientType == "ls"){
+        gradient = std::make_unique<LinInterGrad>(calcHousGrad(mesh, eleDens));
+    } else if (gradientType == "h1") {
+        //gradient = std::make_unique<H1Gradient>(h1Function, *mfemMesh);
+    }
 
     for (const auto& node : config["lasers"]){
         Length wavelength{node["wavelength"].as<double>()};
@@ -78,91 +66,62 @@ int main(int, char * argv[]) {
         auto estimateBremsstrahlung = node["estimate_bremsstrahlung"].as<bool>();
         auto estimateResonance = node["estimate_resonance"].as<bool>();
         auto estimateGain = node["estimate_gain"].as<bool>();
-        auto gradientType = node["gradient_type"].as<std::string>();
 
-        Laser laser(
+        Laser laser{
                 wavelength,
                 [&direction](const Point &) { return direction; },
                 Gaussian(spatialFWHM, energy.asDouble, 0),
                 startPoint,
                 endPoint,
                 raysCount
-        );
+        };
 
-        std::unique_ptr<Gradient> gradient;
-        auto h1Function = projectL2toH1(densityGridFunction, l2FiniteElementSpace, h1FiniteElementSpace);
-
-        if (gradientType == "ls"){
-            gradient = std::make_unique<LinearInterpolation>(getHouseholderGradientAtPoints(mesh, electronDensityMeshFunction));
-        } else if (gradientType == "h1") {
-            gradient = std::make_unique<H1Gradient>(h1Function, *mfemMesh);
-        }
-
-        SpitzerFrequency spitzerFrequency;
-        ColdPlasma coldPlasma;
+        MfemMeshFunction frequency (space, [&](const Element& e) {
+            return calcSpitzerFreq(eleDens.getValue(e), temperature.getValue(e), ionization.getValue(e), wavelength);
+        });
+        MfemMeshFunction refractIndex(space, [&eleDens](const Element& e){
+            return calcRefractIndex(eleDens.getValue(e), Length{1315e-7}, 0);
+        });
         Marker reflected;
-        SnellsLaw snellsLaw(
-                electronDensityMeshFunction,
-                temperatureMeshFunction,
-                ionizationMeshFunction,
-                *gradient,
-                spitzerFrequency,
-                coldPlasma,
-                laser.wavelength,
-                &reflected
-        );
+        SnellsLaw snellsLaw(*gradient, refractIndex, &reflected);
 
 
         auto initialDirections = generateInitialDirections(laser);
-        auto intersections = generateIntersections(
-                mesh,
-                initialDirections,
-                snellsLaw,
-                intersectStraight,
-                DontStop()
-        );
+        auto intersections = findIntersections(mesh, initialDirections, snellsLaw, intersectStraight, dontStop);
         allIntersections.insert(allIntersections.end(), intersections.begin(), intersections.end());
 
-        AbsorptionController absorber;
+        EnergyExchangeController exchangeController;
 
-        std::unique_ptr<Bremsstrahlung> bremsstrahlungModel;
+        MfemMeshFunction invBremssCoeff(space, [&](const Element& e){
+            return calcInvBremssCoeff(eleDens.getValue(e), wavelength, frequency.getValue(e));
+        });
+
+        Bremsstrahlung bremss(invBremssCoeff);
         if (estimateBremsstrahlung){
-            bremsstrahlungModel = std::make_unique<Bremsstrahlung>(
-                    electronDensityMeshFunction,
-                    temperatureMeshFunction,
-                    ionizationMeshFunction,
-                    spitzerFrequency,
-                    coldPlasma,
-                    laser.wavelength
-            );
-            absorber.addModel(bremsstrahlungModel.get());
+            exchangeController.addModel(&bremss);
         }
 
-        std::unique_ptr<Resonance> resonance;
-        ClassicCriticalDensity classicCriticalDensity;
+        Resonance resonance(*gradient, laser.wavelength, reflected);
         if (estimateResonance){
-            resonance = std::make_unique<Resonance>(*gradient, classicCriticalDensity, laser.wavelength, reflected);
-            absorber.addModel(resonance.get());
+            exchangeController.addModel(&resonance);
         }
 
-        std::unique_ptr<XRayGain> gain;
-        std::unique_ptr<MfemMeshFunction> gainMeshFunction;
-        std::unique_ptr<mfem::GridFunction> gainGridFunction;
+        std::unique_ptr<MfemMeshFunction> gain;
+        std::unique_ptr<XRayGain> xRayGain;
         if (estimateGain){
             std::ifstream gainFile(config["gain_file"].as<std::string>());
-            gainGridFunction = std::make_unique<mfem::GridFunction>(mfemMesh.get(), gainFile);
-            gainMeshFunction = std::make_unique<MfemMeshFunction>(*gainGridFunction, l2FiniteElementSpace);
-            gain = std::make_unique<XRayGain>(*gainMeshFunction);
-            absorber.addModel(gain.get());
+            gain = std::make_unique<MfemMeshFunction>(space, gainFile);
+            xRayGain = std::make_unique<XRayGain>(*gain);
+            exchangeController.addModel(xRayGain.get());
         }
 
         std::cout << stringifyAbsorptionSummary(
-                absorber.absorb(intersections, generateInitialEnergies(laser), absorbedEnergyMeshFunction)
+                exchangeController.absorb(intersections, generateInitialEnergies(laser), absorbedEnergy)
         );
     }
 
     std::ofstream raysFile(raysOutputFilename);
     raysFile << stringifyRaysToMsgpack(allIntersections);
     std::ofstream absorbedResult(absorbedEnergyFilename);
-    absorbedResult << absorbedEnergyMeshFunction;
+    absorbedResult << absorbedEnergy;
 }
