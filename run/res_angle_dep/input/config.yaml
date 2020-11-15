@@ -1,0 +1,70 @@
+mesh_file: "./input/mesh.mesh"
+density_file: "./input/density.gf"
+temperature_file: "./input/temperature.gf"
+ionization_file: "./input/ionization.gf"
+gradient_type: "ls"
+lasers:
+  - wavelength: 1315e-7
+    direction:
+      x: -1
+      y: 0.0174551 #1 deg
+    spatial_FWHM: 5e-4
+    energy: 1
+    start_point:
+      x: 140e-4
+      y: 2e-4
+    end_point:
+      x: 140e-4
+      y: 12e-4
+    rays_count: 1000
+    estimate_bremsstrahlung: true
+    estimate_resonance: true
+    estimate_gain: false
+  - wavelength: 800e-7
+    direction:
+     x: -1
+     y: 0.0349208 #2 deg
+    spatial_FWHM: 5e-4
+    energy: 1
+    start_point:
+     x: 140e-4
+     y: 20e-4
+    end_point:
+     x: 140e-4
+     y: 30e-4
+    rays_count: 1000
+    estimate_bremsstrahlung: true
+    estimate_resonance: true
+    estimate_gain: false
+  - wavelength: 800e-7
+    direction:
+      x: -1
+      y: 0.0524078 #3 deg
+    spatial_FWHM: 5e-4
+    energy: 1
+    start_point:
+      x: 140e-4
+      y: 40e-4
+    end_point:
+      x: 140e-4
+      y: 50e-4
+    rays_count: 1000
+    estimate_bremsstrahlung: true
+    estimate_resonance: true
+    estimate_gain: false
+  - wavelength: 800e-7
+    direction:
+      x: -1
+      y: 0.0874887 #5 deg
+    spatial_FWHM: 5e-4
+    energy: 1
+    start_point:
+      x: 140e-4
+      y: 60e-4
+    end_point:
+      x: 140e-4
+      y: 70e-4
+    rays_count: 1000
+    estimate_bremsstrahlung: true
+    estimate_resonance: true
+    estimate_gain: false
