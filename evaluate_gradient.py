@@ -59,6 +59,7 @@ def main(folder):
     h_eff = np.asarray(1) / segments_count
     axes.loglog(h_eff, list(norms), "o")
     axes.loglog(h_eff, h_eff ** 2)
+    plt.savefig(os.path.join(folder, "output/conv.png"))
 
     for segments, vector_field, analytic_vector_field in zip(segments_count, vector_fields, analytic_vector_fields):
         fig = plt.figure(figsize=(10, 5))
