@@ -43,13 +43,14 @@ def plot_grad_summary(fig, dual_mesh, grid_function, gradient, analytic):
     fig.colorbar(contour, cax=make_axes_locatable(diff_axes).append_axes("right", size="5%", pad=0.05))
 
     contour = rayvis.plot_vector_field(analytic_axes, analytic, dual_mesh)
+    analytic_axes.set_xlabel("analytic")
     fig.colorbar(contour, cax=make_axes_locatable(analytic_axes).append_axes("right", size="5%", pad=0.05))
 
 
 def main(folder):
     path = os.path.join(folder, "output/grad{}.msgpack")
     analytic_path = os.path.join(folder, "output/analytic_grad{}.msgpack")
-    segments_count = range(10, 101, 10)
+    segments_count = range(10, 21, 10)
     file_names = [path.format(count) for count in segments_count]
     analytic_file_names = [analytic_path.format(count) for count in segments_count]
     vector_fields = list(load_vector_fields(file_names))
@@ -62,7 +63,7 @@ def main(folder):
     plt.savefig(os.path.join(folder, "output/conv.png"))
 
     for segments, vector_field, analytic_vector_field in zip(segments_count, vector_fields, analytic_vector_fields):
-        fig = plt.figure(figsize=(10, 5))
+        fig = plt.figure(figsize=(15, 7.5), dpi=300)
         with open(os.path.join(folder, "output/mesh{}.mfem".format(segments))) as f:
             mesh = rayvis.read_mfem_mesh(f)
         with open(os.path.join(folder, "output/dual_mesh{}.mfem".format(segments))) as f:

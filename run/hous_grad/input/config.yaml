@@ -4,3 +4,4 @@ meshes:
   segments_step: 10
 
 function: sin
+type: haus

@@ -1,0 +1,7 @@
+meshes:
+  segments_from: 10
+  segments_to: 100
+  segments_step: 10
+
+function: sin
+type: integral

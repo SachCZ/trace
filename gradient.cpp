@@ -1,21 +1,23 @@
 #include <raytracer.h>
 #include <yaml-cpp/yaml.h>
 #include <iostream>
+#include <random>
 
 using namespace raytracer;
 
-VectorField calcAnalyticGrad(const VectorField& discreteGradient, const std::function<Vector(Point)>& analyticGradFunc){
+VectorField
+calcAnalyticGrad(const VectorField &discreteGradient, const std::function<Vector(Point)> &analyticGradFunc) {
     VectorField result;
-    for (const auto& pointAndVector : discreteGradient){
+    for (const auto &pointAndVector : discreteGradient) {
         auto point = pointAndVector.first;
         result[point] = analyticGradFunc(*point);
     }
     return result;
 }
 
-std::unique_ptr<std::ostream> openFile(const std::vector<std::string>& paths){
+std::unique_ptr<std::ostream> openFile(const std::vector<std::string> &paths) {
     std::stringstream outputFilename;
-    for (const auto& path : paths){
+    for (const auto &path : paths) {
         outputFilename << path;
     }
     return std::make_unique<std::ofstream>(outputFilename.str());
@@ -57,6 +59,14 @@ int main(int, char *argv[]) {
                 auto y = point.y;
                 return Vector{3.69106 * cos(11.9066 * x + 9.36195 * y), 2.9022 * cos(11.9066 * x + 9.36195 * y)};
             };
+        } else if (functionName == "lin")  {
+            using namespace std;
+            analyticFunc = [](const Point &point) {
+                return 2* point.x + 3*point.y;
+            };
+            analyticGradFunc = [](const Point &point) {
+                return Vector{2, 3};
+            };
         }
     } else {
         throw std::logic_error("'function' not defined in config file");
@@ -70,12 +80,36 @@ int main(int, char *argv[]) {
         auto from = config["meshes"]["segments_from"].as<size_t>();
         auto to = config["meshes"]["segments_to"].as<size_t>();
         auto step = config["meshes"]["segments_step"].as<size_t>();
+        auto type = config["type"].as<std::string>();
         for (size_t count = from; count <= to; count += step) {
             std::stringstream basePath;
-            MfemMesh mesh(SegmentedLine{1.0, count}, SegmentedLine{1.0, count});
+            auto mfemMesh = std::make_unique<mfem::Mesh>(
+                    count, count,
+                    mfem::Element::QUADRILATERAL,
+                    true,
+                    1.0, 1.0,
+                    true
+            );
+            auto verticesCount = mfemMesh->GetNV();
+            mfem::Vector displacements(verticesCount * 2);
+            std::mt19937 gen(std::random_device{}());
+            double maxDisplacement = 1.0 / count / 5;
+            std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
+            for (int i = 0; i < verticesCount * 2; i++) {
+                displacements[i] = dist(gen);
+            }
+            mfemMesh->MoveVertices(displacements);
+            MfemMesh mesh(mfemMesh.get());
+
             MfemL20Space space(mesh);
             MfemMeshFunction func(space, analyticFunc);
-            auto gradient = calcHousGrad(mesh, func);
+            VectorField gradient;
+            if (type == "haus") {
+                gradient = calcHousGrad(mesh, func);
+            }
+            if (type == "integral") {
+                gradient = calcIntegralGrad(mesh, func);
+            }
             auto analyticGradient = calcAnalyticGrad(gradient, analyticGradFunc);
             writeGradResult("output/", std::to_string(count), mesh, func, gradient, analyticGradient);
         }
