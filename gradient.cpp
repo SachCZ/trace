@@ -59,12 +59,12 @@ int main(int, char *argv[]) {
                 auto y = point.y;
                 return Vector{3.69106 * cos(11.9066 * x + 9.36195 * y), 2.9022 * cos(11.9066 * x + 9.36195 * y)};
             };
-        } else if (functionName == "lin")  {
+        } else if (functionName == "lin") {
             using namespace std;
             analyticFunc = [](const Point &point) {
-                return 2* point.x + 3*point.y;
+                return 2 * point.x + 3 * point.y;
             };
-            analyticGradFunc = [](const Point &point) {
+            analyticGradFunc = [](const Point &) {
                 return Vector{2, 3};
             };
         }
@@ -75,7 +75,8 @@ int main(int, char *argv[]) {
     if (
             config["meshes"]["segments_from"] &&
             config["meshes"]["segments_to"] &&
-            config["meshes"]["segments_step"]
+            config["meshes"]["segments_step"] &&
+            config["meshes"]["random_factor"]
             ) {
         auto from = config["meshes"]["segments_from"].as<size_t>();
         auto to = config["meshes"]["segments_to"].as<size_t>();
@@ -93,7 +94,8 @@ int main(int, char *argv[]) {
             auto verticesCount = mfemMesh->GetNV();
             mfem::Vector displacements(verticesCount * 2);
             std::mt19937 gen(std::random_device{}());
-            double maxDisplacement = 1.0 / count / 5;
+            auto randomFactor = config["meshes"]["random_factor"].as<double>();
+            double maxDisplacement = 1.0 / count * randomFactor;
             std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
             for (int i = 0; i < verticesCount * 2; i++) {
                 displacements[i] = dist(gen);

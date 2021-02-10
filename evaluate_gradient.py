@@ -6,11 +6,17 @@ import rayvis
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import yaml
 
 
-def calc_max_norm(field, analytic):
+def calc_max_norm(field, analytic, h):
     error = field - analytic
     return max(error.norm())
+
+
+def calc_l2_norm(field, analytic, h):
+    error = field - analytic
+    return np.sqrt(h ** 2 * np.sum(error ** 2))
 
 
 def load_vector_fields(file_names):
@@ -19,9 +25,9 @@ def load_vector_fields(file_names):
             yield rayvis.read_vector_field(f)
 
 
-def calc_norms(vector_fields, analytic_vector_fields):
+def calc_norms(vector_fields, analytic_vector_fields, norm_func):
     for (vector_field, analytic_vector_field) in zip(vector_fields, analytic_vector_fields):
-        yield calc_max_norm(vector_field, analytic_vector_field)
+        yield norm_func(vector_field, analytic_vector_field, 1.0 / (len(vector_field.coord_x) - 1))
 
 
 def plot_grad_summary(fig, dual_mesh, grid_function, gradient, analytic):
@@ -47,15 +53,28 @@ def plot_grad_summary(fig, dual_mesh, grid_function, gradient, analytic):
     fig.colorbar(contour, cax=make_axes_locatable(analytic_axes).append_axes("right", size="5%", pad=0.05))
 
 
+def load_config(filename):
+    with open(filename, 'r') as stream:
+        try:
+            return yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+
 def main(folder):
     path = os.path.join(folder, "output/grad{}.msgpack")
     analytic_path = os.path.join(folder, "output/analytic_grad{}.msgpack")
-    segments_count = range(10, 21, 10)
+    config = load_config(os.path.join(folder, "input/config.yaml"))
+    segments_count = range(
+        int(config["meshes"]["segments_from"]),
+        int(config["meshes"]["segments_to"]) + 1,
+        int(config["meshes"]["segments_step"])
+    )
     file_names = [path.format(count) for count in segments_count]
     analytic_file_names = [analytic_path.format(count) for count in segments_count]
     vector_fields = list(load_vector_fields(file_names))
     analytic_vector_fields = list(load_vector_fields(analytic_file_names))
-    norms = calc_norms(vector_fields, analytic_vector_fields)
+    norms = calc_norms(vector_fields, analytic_vector_fields, calc_max_norm)
     fig, axes = plt.subplots()
     h_eff = np.asarray(1) / segments_count
     axes.loglog(h_eff, list(norms), "o")

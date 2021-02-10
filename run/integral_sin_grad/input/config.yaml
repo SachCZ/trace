@@ -2,6 +2,7 @@ meshes:
   segments_from: 10
   segments_to: 100
   segments_step: 10
+  random_factor: 0.2
 
 function: sin
-type: haus
+type: integral
