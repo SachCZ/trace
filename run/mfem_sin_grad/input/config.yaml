@@ -5,5 +5,5 @@ meshes:
   random_factors:
   - 0.2
 
-function: lin
-type: haus
+function: sin
+type: mfem

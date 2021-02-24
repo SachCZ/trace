@@ -76,7 +76,7 @@ int main(int, char *argv[]) {
             config["meshes"]["segments_from"] &&
             config["meshes"]["segments_to"] &&
             config["meshes"]["segments_step"] &&
-            config["meshes"]["random_factor"]
+            config["meshes"]["random_factors"]
             ) {
         auto from = config["meshes"]["segments_from"].as<size_t>();
         auto to = config["meshes"]["segments_to"].as<size_t>();
@@ -94,26 +94,39 @@ int main(int, char *argv[]) {
             auto verticesCount = mfemMesh->GetNV();
             mfem::Vector displacements(verticesCount * 2);
             std::mt19937 gen(std::random_device{}());
-            auto randomFactor = config["meshes"]["random_factor"].as<double>();
-            double maxDisplacement = 1.0 / count * randomFactor;
-            std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
-            for (int i = 0; i < verticesCount * 2; i++) {
-                displacements[i] = dist(gen);
-            }
-            mfemMesh->MoveVertices(displacements);
-            MfemMesh mesh(mfemMesh.get());
+            auto randomFactors = config["meshes"]["random_factors"];
+            for (auto randomFactorNode : randomFactors) {
+                auto randomFactor = randomFactorNode.as<double>();
+                double maxDisplacement = 1.0 / count * randomFactor;
+                std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
+                for (int i = 0; i < verticesCount * 2; i++) {
+                    displacements[i] = dist(gen);
+                }
+                mfemMesh->MoveVertices(displacements);
+                MfemMesh mesh(mfemMesh.get());
 
-            MfemL20Space space(mesh);
-            MfemMeshFunction func(space, analyticFunc);
-            VectorField gradient;
-            if (type == "haus") {
-                gradient = calcHousGrad(mesh, func);
+                MfemL20Space space(mesh);
+                MfemMeshFunction func(space, analyticFunc);
+                VectorField gradient;
+                if (type == "haus") {
+                    gradient = calcHousGrad(mesh, func);
+                }
+                if (type == "integral") {
+                    gradient = calcIntegralGrad(mesh, func);
+                }
+                if (type == "mfem") {
+                    mfem::H1_FECollection h1FiniteElementCollection{1, 2};
+                    mfem::FiniteElementSpace h1FiniteElementSpace(mesh.getMfemMesh(), &h1FiniteElementCollection, 2);
+                    mfem::VectorFunctionCoefficient coeff(2, [&](const mfem::Vector &point, mfem::Vector &result) {
+                        auto value = analyticGradFunc({point[0], point[1]});
+                        result[0] = value.x;
+                        result[1] = value.y;
+                    });
+                    gradient = mfemGradient(*func.getGF(), space.getSpace(), h1FiniteElementSpace, mesh, coeff);
+                }
+                auto analyticGradient = calcAnalyticGrad(gradient, analyticGradFunc);
+                writeGradResult("output/", std::to_string(count) + "_" + randomFactorNode.as<std::string>(), mesh, func, gradient, analyticGradient);
             }
-            if (type == "integral") {
-                gradient = calcIntegralGrad(mesh, func);
-            }
-            auto analyticGradient = calcAnalyticGrad(gradient, analyticGradFunc);
-            writeGradResult("output/", std::to_string(count), mesh, func, gradient, analyticGradient);
         }
     } else {
         throw std::logic_error("meshes have invalid config in config file");

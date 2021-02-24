@@ -2,7 +2,15 @@ meshes:
   segments_from: 10
   segments_to: 100
   segments_step: 10
-  random_factor: 0.2
+  random_factors:
+    - 0.005
+    - 0.01
+    - 0.015
+    - 0.02
+    - 0.025
+    - 0.03
+    - 0.035
+    - 0.04
 
 function: lin
 type: integral

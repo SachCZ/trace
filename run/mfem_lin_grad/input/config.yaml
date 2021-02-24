@@ -6,4 +6,4 @@ meshes:
   - 0.2
 
 function: lin
-type: haus
+type: mfem
