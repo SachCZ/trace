@@ -73,16 +73,12 @@ int main(int, char *argv[]) {
     }
 
     if (
-            config["meshes"]["segments_from"] &&
-            config["meshes"]["segments_to"] &&
-            config["meshes"]["segments_step"] &&
+            config["meshes"]["segments"] &&
             config["meshes"]["random_factors"]
             ) {
-        auto from = config["meshes"]["segments_from"].as<size_t>();
-        auto to = config["meshes"]["segments_to"].as<size_t>();
-        auto step = config["meshes"]["segments_step"].as<size_t>();
         auto type = config["type"].as<std::string>();
-        for (size_t count = from; count <= to; count += step) {
+        for (const auto& segmentsNode : config["meshes"]["segments"]) {
+            auto count = segmentsNode.as<int>();
             std::stringstream basePath;
             auto mfemMesh = std::make_unique<mfem::Mesh>(
                     count, count,

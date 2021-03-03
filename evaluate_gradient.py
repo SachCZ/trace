@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import yaml
+import scipy.optimize as optimize
 
 
 def calc_max_norm(field, analytic, h):
@@ -61,25 +62,45 @@ def load_config(filename):
             print(exc)
 
 
-def main(folder):
+def main(folder, config_name="config.yaml"):
     path = os.path.join(folder, "output/grad{}_{}.msgpack")
     analytic_path = os.path.join(folder, "output/analytic_grad{}_{}.msgpack")
-    config = load_config(os.path.join(folder, "input/config.yaml"))
-    segments_count = range(
-        int(config["meshes"]["segments_from"]),
-        int(config["meshes"]["segments_to"]) + 1,
-        int(config["meshes"]["segments_step"])
-    )
+    config = load_config(os.path.join(folder, "input", config_name))
+    segments_count = [int(count) for count in config["meshes"]["segments"]]
     factors = config["meshes"]["random_factors"]
-    conv_fig, axes = plt.subplots()
+    conv_fig, conv_axes = plt.subplots()
+
+    displacement_from0 = []
+
     for factor in factors:
         file_names = [path.format(count, factor) for count in segments_count]
         analytic_file_names = [analytic_path.format(count, factor) for count in segments_count]
         vector_fields = list(load_vector_fields(file_names))
         analytic_vector_fields = list(load_vector_fields(analytic_file_names))
-        norms = calc_norms(vector_fields, analytic_vector_fields, calc_max_norm)
+        norms = list(calc_norms(vector_fields, analytic_vector_fields, calc_l2_norm))
         h_eff = np.asarray(1) / segments_count
-        axes.semilogx(h_eff, list(norms), "o", label="factor = {}".format(factor))
+
+        try:
+            def fit_func(h, e, a, b):
+                return a * h ** e + b
+
+            popt, pcov = optimize.curve_fit(fit_func, h_eff, norms, p0=[1., 1., 0])
+            b = popt[2]
+            a = popt[1]
+            exponent = popt[0]
+        except RuntimeError as e:
+            def fit_func(h, a):
+                return a * np.ones(len(h))
+
+            popt, pcov = optimize.curve_fit(fit_func, h_eff, norms, p0=[1.])
+            b = popt[0]
+            a = 0
+            exponent = 0
+
+        line, = conv_axes.plot(h_eff, norms, "o", label="factor = {}, $f(h) = {:.0f}x^{{{:.2f}}} + {:.3f}$".format(factor, a, exponent, b))
+        x = np.linspace(min(h_eff), max(h_eff), 100)
+        conv_axes.plot(x, fit_func(x, *popt), color=line.get_color())
+        displacement_from0.append(b)
 
         for segments, vector_field, analytic_vector_field in zip(segments_count, vector_fields, analytic_vector_fields):
             if segments > 30:
@@ -93,10 +114,22 @@ def main(folder):
                 gf = rayvis.read_grid_function(f, mesh)
             plot_grad_summary(fig, dual_mesh, gf, vector_field, analytic_vector_field)
             plt.savefig(os.path.join(folder, "output/summary{}_{}.png".format(segments, factor)))
-    axes.legend()
-    plt.show()
+    conv_axes.legend()
     conv_fig.savefig(os.path.join(folder, "output/conv.png"))
+
+    conv_error_fig, conv_error_axes = plt.subplots()
+    conv_error_axes.plot(factors, displacement_from0, "o")
+    conv_error_axes.grid()
+    conv_error_axes.set_xlabel("factor")
+    conv_error_axes.set_ylabel("$b$")
+    conv_error_fig.savefig(os.path.join(folder, "output/conv_error.png"))
 
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    args = list(sys.argv)
+    if len(args) is 2:
+        main(sys.argv[1])
+    elif len(sys.argv) is 3:
+        main(sys.argv[1], sys.argv[2])
+    else:
+        print("Invalid args")

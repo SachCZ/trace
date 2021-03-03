@@ -1,0 +1,23 @@
+mesh_file: "./input/mesh.mesh"
+ele_dens_profile: "parabolic"
+max_ele_dens: 1.75e24
+temperature_file: "./input/temperature.gf"
+ionization_file: "./input/ionization.gf"
+lasers:
+  - wavelength: 25.5e-7
+    direction:
+      x: 1.0
+      y: 0.5
+    spatial_FWHM: 0.1
+    energy: 1
+    start_point:
+      x: -1.1
+      y: 0.6
+    end_point:
+      x: -1.1
+      y: 0.2
+    rays_count: 100
+    estimate_bremsstrahlung: false
+    estimate_resonance: false
+    estimate_gain: false
+    gradient_type: "ls"

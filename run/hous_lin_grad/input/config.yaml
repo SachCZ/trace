@@ -1,7 +1,12 @@
 meshes:
-  segments_from: 10
-  segments_to: 100
-  segments_step: 10
+  segments:
+    - 14
+    - 17
+    - 20
+    - 25
+    - 33
+    - 50
+    - 100
   random_factors:
   - 0.2
 

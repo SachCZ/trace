@@ -15,13 +15,11 @@ int main(int, char * argv[]) {
 
     YAML::Node config = YAML::LoadFile(argv[1]);
 
-    std::string meshFilename = config["mesh_file"].as<std::string>();
-    std::string densityFilename = config["density_file"].as<std::string>();
-    std::string temperatureFilename = config["temperature_file"].as<std::string>();
-    std::string ionizationFilename = config["ionization_file"].as<std::string>();
+    auto meshFilename = config["mesh_file"].as<std::string>();
+    auto temperatureFilename = config["temperature_file"].as<std::string>();
+    auto ionizationFilename = config["ionization_file"].as<std::string>();
     std::string raysOutputFilename = "output/rays.msgpack";
     std::string absorbedEnergyFilename = "output/absorbed_energy.gf";
-    auto gradientType = config["gradient_type"].as<std::string>();
 
     MfemMesh mesh(meshFilename);
 
@@ -37,25 +35,41 @@ int main(int, char * argv[]) {
     std::ifstream ionizationFile(ionizationFilename);
     MfemMeshFunction ionization(space, ionizationFile);
 
-    std::ifstream densityFile(densityFilename);
-    MfemMeshFunction density(space, densityFile);
-    MfemMeshFunction eleDens(space, [&](const Element& e) {
-        double massUnit = 1.6605e-24;
-        double A = 55.845;
-        return density.getValue(e) * ionization.getValue(e) / massUnit / A;
-    });
+    std::unique_ptr<MfemMeshFunction> eleDens;
+    if (config["density_file"]){
+        std::ifstream densityFile(config["density_file"].as<std::string>());
+        MfemMeshFunction density(space, densityFile);
+        eleDens = std::make_unique<MfemMeshFunction>(space, [&](const Element& e) {
+            double massUnit = 1.6605e-24;
+            double A = 55.845;
+            return density.getValue(e) * ionization.getValue(e) / massUnit / A;
+        });
+    } else if (config["ele_dens_profile"] && config["max_ele_dens"]){
+        if (config["ele_dens_profile"].as<std::string>() == "parabolic"){
+            eleDens = std::make_unique<MfemMeshFunction>(space, [&](const Point& point) {
+                auto maxDens = config["max_ele_dens"].as<double>();
+                return maxDens * (1 - std::pow(point.x, 2));
+            });
+        } else {
+            throw std::logic_error("unknown profile");
+        }
+    } else {
+        throw std::logic_error("Invalid density spec");
+    }
 
     IntersectionSet allIntersections;
 
-    std::unique_ptr<Gradient> gradient;
-    //auto h1Function = projectL2toH1(densityGridFunction, l2FiniteElementSpace, h1FiniteElementSpace);
-    if (gradientType == "ls"){
-        gradient = std::make_unique<LinInterGrad>(calcHousGrad(mesh, eleDens));
-    } else if (gradientType == "h1") {
-        //gradient = std::make_unique<H1Gradient>(h1Function, *mfemMesh);
-    }
-
     for (const auto& node : config["lasers"]){
+        auto gradientType = node["gradient_type"].as<std::string>();
+
+        VectorField gradAtPoints;
+        if (gradientType == "ls"){
+            gradAtPoints = calcHousGrad(mesh, *eleDens);
+        } else if (gradientType == "h1") {
+            //gradient = std::make_unique<H1Gradient>(h1Function, *mfemMesh);
+        }
+        auto gradient = LinInterGrad(gradAtPoints);
+
         Length wavelength{node["wavelength"].as<double>()};
         auto direction{parseVector(node["direction"])};
         auto spatialFWHM = node["spatial_FWHM"].as<double>();
@@ -77,13 +91,13 @@ int main(int, char * argv[]) {
         };
 
         MfemMeshFunction frequency (space, [&](const Element& e) {
-            return calcSpitzerFreq(eleDens.getValue(e), temperature.getValue(e), ionization.getValue(e), wavelength);
+            return calcSpitzerFreq(eleDens->getValue(e), temperature.getValue(e), ionization.getValue(e), wavelength);
         });
-        MfemMeshFunction refractIndex(space, [&eleDens](const Element& e){
-            return calcRefractIndex(eleDens.getValue(e), Length{1315e-7}, 0);
+        MfemMeshFunction refractIndex(space, [&](const Element& e){
+            return calcRefractIndex(eleDens->getValue(e), Length{wavelength}, frequency.getValue(e));
         });
         Marker reflected;
-        SnellsLaw snellsLaw(*gradient, refractIndex, &reflected);
+        SnellsLaw snellsLaw(gradient, refractIndex, &reflected);
 
 
         auto initialDirections = generateInitialDirections(laser);
@@ -93,7 +107,7 @@ int main(int, char * argv[]) {
         EnergyExchangeController exchangeController;
 
         MfemMeshFunction invBremssCoeff(space, [&](const Element& e){
-            return calcInvBremssCoeff(eleDens.getValue(e), wavelength, frequency.getValue(e));
+            return calcInvBremssCoeff(eleDens->getValue(e), wavelength, frequency.getValue(e));
         });
 
         Bremsstrahlung bremss(invBremssCoeff);
@@ -101,7 +115,7 @@ int main(int, char * argv[]) {
             exchangeController.addModel(&bremss);
         }
 
-        Resonance resonance(*gradient, laser.wavelength, reflected);
+        Resonance resonance(gradient, laser.wavelength, reflected);
         if (estimateResonance){
             exchangeController.addModel(&resonance);
         }
