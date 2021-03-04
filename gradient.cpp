@@ -77,7 +77,7 @@ int main(int, char *argv[]) {
             config["meshes"]["random_factors"]
             ) {
         auto type = config["type"].as<std::string>();
-        for (const auto& segmentsNode : config["meshes"]["segments"]) {
+        for (const auto &segmentsNode : config["meshes"]["segments"]) {
             auto count = segmentsNode.as<int>();
             std::stringstream basePath;
             auto mfemMesh = std::make_unique<mfem::Mesh>(
@@ -113,15 +113,27 @@ int main(int, char *argv[]) {
                 if (type == "mfem") {
                     mfem::H1_FECollection h1FiniteElementCollection{1, 2};
                     mfem::FiniteElementSpace h1FiniteElementSpace(mesh.getMfemMesh(), &h1FiniteElementCollection, 2);
-                    mfem::VectorFunctionCoefficient coeff(2, [&](const mfem::Vector &point, mfem::Vector &result) {
+                    mfem::FunctionCoefficient boundaryValue([&](const mfem::Vector &point) {
+                        return analyticFunc({point[0], point[1]});
+                    });
+                    mfem::VectorFunctionCoefficient gradientBoundaryValue(2, [&](const mfem::Vector &point,
+                                                                                 mfem::Vector &result) {
                         auto value = analyticGradFunc({point[0], point[1]});
                         result[0] = value.x;
                         result[1] = value.y;
                     });
-                    gradient = mfemGradient(*func.getGF(), space.getSpace(), h1FiniteElementSpace, mesh, coeff);
+                    gradient = mfemGradient(
+                            *func.getGF(),
+                            space.getSpace(),
+                            h1FiniteElementSpace,
+                            mesh,
+                            boundaryValue,
+                            gradientBoundaryValue
+                    );
                 }
                 auto analyticGradient = calcAnalyticGrad(gradient, analyticGradFunc);
-                writeGradResult("output/", std::to_string(count) + "_" + randomFactorNode.as<std::string>(), mesh, func, gradient, analyticGradient);
+                writeGradResult("output/", std::to_string(count) + "_" + randomFactorNode.as<std::string>(), mesh, func,
+                                gradient, analyticGradient);
             }
         }
     } else {

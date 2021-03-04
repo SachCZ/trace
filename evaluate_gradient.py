@@ -127,9 +127,9 @@ def main(folder, config_name="config.yaml"):
 
 if __name__ == '__main__':
     args = list(sys.argv)
-    if len(args) is 2:
+    if len(args) == 2:
         main(sys.argv[1])
-    elif len(sys.argv) is 3:
+    elif len(sys.argv) == 3:
         main(sys.argv[1], sys.argv[2])
     else:
         print("Invalid args")

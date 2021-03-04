@@ -8,7 +8,14 @@ meshes:
     - 50
     - 100
   random_factors:
-  - 0.2
+    - 0.005
+    - 0.01
+    - 0.015
+    - 0.02
+    - 0.025
+    - 0.03
+    - 0.035
+    - 0.04
 
 function: lin
 type: mfem
