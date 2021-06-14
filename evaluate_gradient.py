@@ -78,30 +78,23 @@ def main(folder, config_name="config.yaml"):
         vector_fields = list(load_vector_fields(file_names))
         analytic_vector_fields = list(load_vector_fields(analytic_file_names))
         norms = list(calc_norms(vector_fields, analytic_vector_fields, calc_l2_norm))
-        h_eff = np.asarray(1) / segments_count
 
         try:
-            def fit_func(h, e, a, b):
-                return a * h ** e + b
+            def fit_func(h, a):
+                return a * h ** -2
 
-            popt, pcov = optimize.curve_fit(fit_func, h_eff, norms, p0=[1., 1., 0])
-            b = popt[2]
-            a = popt[1]
-            exponent = popt[0]
+            popt, pcov = optimize.curve_fit(fit_func, segments_count, norms, p0=[14.])
         except RuntimeError as e:
             def fit_func(h, a):
                 return a * np.ones(len(h))
 
-            popt, pcov = optimize.curve_fit(fit_func, h_eff, norms, p0=[1.])
-            b = popt[0]
-            a = 0
-            exponent = 0
+            popt, pcov = optimize.curve_fit(fit_func, segments_count, norms, p0=[1.])
 
-        line, = conv_axes.plot(h_eff, norms, "o", label="factor = {}, $f(h) = {:.0f}x^{{{:.2f}}} + {:.3f}$".format(factor, a, exponent, b))
-        x = np.linspace(min(h_eff), max(h_eff), 100)
-        conv_axes.plot(x, fit_func(x, *popt), color=line.get_color())
-        displacement_from0.append(b)
+        line, = conv_axes.loglog(segments_count, norms, "o", label="$f$ = {}".format(factor))
+        x = np.linspace(min(segments_count), max(segments_count), 100)
+        conv_axes.loglog(x, fit_func(x, *popt), color=line.get_color())
 
+        """
         for segments, vector_field, analytic_vector_field in zip(segments_count, vector_fields, analytic_vector_fields):
             if segments > 30:
                 continue
@@ -114,16 +107,18 @@ def main(folder, config_name="config.yaml"):
                 gf = rayvis.read_grid_function(f, mesh)
             plot_grad_summary(fig, dual_mesh, gf, vector_field, analytic_vector_field)
             plt.savefig(os.path.join(folder, "output/summary{}_{}.png".format(segments, factor)))
+        """
     conv_axes.legend()
     conv_fig.savefig(os.path.join(folder, "output/conv.png"))
 
+    """
     conv_error_fig, conv_error_axes = plt.subplots()
     conv_error_axes.plot(factors, displacement_from0, "o")
     conv_error_axes.grid()
     conv_error_axes.set_xlabel("factor")
     conv_error_axes.set_ylabel("$b$")
     conv_error_fig.savefig(os.path.join(folder, "output/conv_error.png"))
-
+    """
 
 if __name__ == '__main__':
     args = list(sys.argv)

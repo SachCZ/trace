@@ -2,6 +2,7 @@
 #include <yaml-cpp/yaml.h>
 #include <iostream>
 #include <random>
+#include "exprtk.hpp"
 
 using namespace raytracer;
 
@@ -96,7 +97,17 @@ int main(int, char *argv[]) {
                 double maxDisplacement = 1.0 / count * randomFactor;
                 std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
                 for (int i = 0; i < verticesCount * 2; i++) {
-                    displacements[i] = dist(gen);
+                    if (
+                            i % (count + 1) == 0 ||
+                            (i + 1) % (count + 1) == 0 ||
+                            i < count + 1 ||
+                            (i > verticesCount - (count + 1) && i < verticesCount + (count + 1)) ||
+                            i > 2 * verticesCount - (count + 1)
+                            ) {
+                        displacements[i] = 0;
+                    } else {
+                        displacements[i] = dist(gen);
+                    }
                 }
                 mfemMesh->MoveVertices(displacements);
                 MfemMesh mesh(mfemMesh.get());
@@ -123,12 +134,11 @@ int main(int, char *argv[]) {
                         result[1] = value.y;
                     });
                     gradient = mfemGradient(
-                            *func.getGF(),
-                            space.getSpace(),
-                            h1FiniteElementSpace,
                             mesh,
-                            boundaryValue,
-                            gradientBoundaryValue
+                            func,
+                            &gradientBoundaryValue,
+                    0,
+                            1.0 / count
                     );
                 }
                 auto analyticGradient = calcAnalyticGrad(gradient, analyticGradFunc);

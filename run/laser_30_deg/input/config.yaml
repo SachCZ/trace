@@ -20,3 +20,19 @@ lasers:
     estimate_bremsstrahlung: true
     estimate_resonance: true
     estimate_gain: false
+  - wavelength: 1315e-7
+    direction:
+      x: -1
+      y: 0.577350 #30 deg
+    spatial_FWHM: 20e-4
+    energy: 1
+    start_point:
+      x: 140e-4
+      y: -50e-4
+    end_point:
+      x: 140e-4
+      y: -10e-4
+    rays_count: 30000
+    estimate_bremsstrahlung: true
+    estimate_resonance: true
+    estimate_gain: false

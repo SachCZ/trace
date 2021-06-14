@@ -1,8 +1,10 @@
 mesh_file: "./input/mesh.mesh"
-density_file: "./input/density.gf"
+ion_dens_file: "./input/density.gf"
+atomic_mass: 55.845
 temperature_file: "./input/temperature.gf"
 ionization_file: "./input/ionization.gf"
-gain_file: "./input/gain.gf"
+rays_filename: "./output/rays.msgpack"
+absorbed_energy_filename: "./output/absorbed_energy.gf"
 lasers:
   - wavelength: 25.5e-7
     direction:
@@ -17,7 +19,7 @@ lasers:
       x: 50e-4
       y: -1e-4
     rays_count: 1001
-    estimate_bremsstrahlung: false
-    estimate_resonance: false
-    estimate_gain: true
-    gradient_type: "ls"
+    energy_exchange:
+      - "gain"
+    grad_type: "ls"
+    gain_file: "./input/gain.gf"
