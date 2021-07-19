@@ -32,18 +32,21 @@ class LaserTraceConfig {
 public:
     LaserTraceConfig(const YAML::Node &laserConfig, const TraceConfig &traceConfig);
 
-    raytracer::Gradient gradient;
+    std::unique_ptr<raytracer::Gradient> gradient;
     raytracer::Laser laser;
     FunctionPtr frequency;
     FunctionPtr refractiveIndex;
     raytracer::PowerExchangeController exchangeController;
-    std::unique_ptr<raytracer::SnellsLaw> snellsLaw;
+    std::unique_ptr<raytracer::SnellsLawBend> snellsLaw;
+    std::unique_ptr<raytracer::TotalReflect> totalReflect;
+    std::unique_ptr<raytracer::ReflectOnCritical> reflectOnCritical;
     std::string energiesOutputFilename{};
 
 private:
     FunctionPtr gain;
     FunctionPtr invBremssCoeff;
     std::unique_ptr<raytracer::Marker> reflectedMarker;
+    std::unique_ptr<raytracer::Marker> criticalMarker;
 
     //Exchange models
     std::unique_ptr<raytracer::XRayGain> xRayGain;
@@ -66,7 +69,7 @@ private:
         return {node[property]["x"].as<double>(), node[property]["y"].as<double>()};
     }
 
-    static raytracer::Gradient parseGradient(const YAML::Node &node, const TraceConfig &traceConfig);
+    static std::unique_ptr<raytracer::Gradient> parseGradient(const YAML::Node &node, const TraceConfig &traceConfig);
 
 };
 

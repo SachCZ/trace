@@ -17,7 +17,7 @@ def analytic(y, y_displacement):
 
 
 def compare_errors(axes, grad_type, **kwargs):
-    with open("output/rays512{}0.01.msgpack".format(grad_type), "rb") as f:
+    with open("output/rays512{}0.02.msgpack".format(grad_type), "rb") as f:
         rays = rayvis.read_msgpack_rays(f)
 
     final_x = np.array([ray.x[-1] for ray in rays])
@@ -39,7 +39,7 @@ def main():
     ax0.legend()
     ax0.grid()
 
-    with open("output/rays512ls0.01.msgpack", "rb") as f:
+    with open("output/rays512ls0.02.msgpack", "rb") as f:
         rays_ls = rayvis.read_msgpack_rays(f)
 
     rayvis.plot_rays(ax1, rays_ls, linewidth=0.5, color="red")

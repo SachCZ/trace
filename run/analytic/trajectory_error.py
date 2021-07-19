@@ -23,7 +23,7 @@ def fit_func(x, a, b):
 
 def compare_gradients(axes, first_grad_type, second_grad_type, eval_method=np.median, fit=False):
     for grad_type, markers in zip([first_grad_type, second_grad_type], [["x", "+", "."], ["1", "2", "3"]]):
-        for factor, mark in zip([0, 0.005, 0.01], markers):
+        for factor, mark in zip([0, 0.02, 0.04], markers):
             if second_grad_type == "mfem" and grad_type == "ls" and factor > 0:
                 continue
 

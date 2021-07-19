@@ -1,6 +1,7 @@
 #include <raytracer.h>
 #include "yaml-cpp/yaml.h"
 #include "trace_config.h"
+#include <fstream>
 
 void divideByVolume(const raytracer::MfemMesh& mesh, raytracer::MfemMeshFunction& func){
     for (auto element : mesh.getElements()){
@@ -30,7 +31,7 @@ int main(int argc, char *argv[]) {
             auto intersections = findIntersections(
                     *traceConfig.mesh,
                     initialDirections,
-                    *laserConfig.snellsLaw,
+                    {*laserConfig.totalReflect, *laserConfig.snellsLaw},
                     intersectStraight,
                     dontStop
             );
