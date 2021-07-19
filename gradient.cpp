@@ -39,8 +39,20 @@ void writeGradResult(
     *openFile({basePath, "grad", fileId, ".msgpack"}) << gradient;
     *openFile({basePath, "analytic_grad", fileId, ".msgpack"}) << analyticGradient;
 
+
     auto dualMeshOutput = openFile({basePath, "dual_mesh", fileId, ".mfem"});
     writeDualMesh(*dualMeshOutput, mesh);
+
+    dynamic_cast<std::ofstream*>(dualMeshOutput.get())->close();
+
+    MfemMesh dualMesh(basePath + "/dual_mesh" + fileId + ".mfem");
+    MfemL20Space space(dualMesh);
+    MfemMeshFunction volumes(space);
+    for (const Element* ele : dualMesh.getElements()){
+        volumes.setValue(*ele, getElementVolume(*ele));
+    }
+
+    *openFile({basePath, "volumes", fileId, ".gf"}) << volumes;
 }
 
 int main(int, char *argv[]) {
@@ -90,23 +102,39 @@ int main(int, char *argv[]) {
             );
             auto verticesCount = mfemMesh->GetNV();
             mfem::Vector displacements(verticesCount * 2);
+            displacements = 0.0;
             std::mt19937 gen(std::random_device{}());
             auto randomFactors = config["meshes"]["random_factors"];
             for (auto randomFactorNode : randomFactors) {
                 auto randomFactor = randomFactorNode.as<double>();
-                double maxDisplacement = 1.0 / count * randomFactor;
-                std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
-                for (int i = 0; i < verticesCount * 2; i++) {
-                    if (
-                            i % (count + 1) == 0 ||
-                            (i + 1) % (count + 1) == 0 ||
-                            i < count + 1 ||
-                            (i > verticesCount - (count + 1) && i < verticesCount + (count + 1)) ||
-                            i > 2 * verticesCount - (count + 1)
-                            ) {
-                        displacements[i] = 0;
-                    } else {
-                        displacements[i] = dist(gen);
+                if (randomFactor == 0) {
+                    /**
+                    for (int i = 0; i < verticesCount * 2; i++) {
+                        if (i > verticesCount) {
+                            auto a = double(i % (count + 1)) / (count + 1);
+                            int b = (i - verticesCount) / (count + 1);
+                            double c = (double) b / (count + 1);
+                            displacements[i] = 0.5 * std::sin(a * 2 * M_PI) * c;
+                        } else {
+                            displacements[i] = 0;
+                        }
+                    }
+                    **/
+                } else {
+                    double maxDisplacement = 1.0 / count * randomFactor;
+                    std::uniform_real_distribution dist(-maxDisplacement, maxDisplacement);
+                    for (int i = 0; i < verticesCount * 2; i++) {
+                        if (
+                                i % (count + 1) == 0 ||
+                                (i + 1) % (count + 1) == 0 ||
+                                i < count + 1 ||
+                                (i > verticesCount - (count + 1) && i < verticesCount + (count + 1)) ||
+                                i > 2 * verticesCount - (count + 1)
+                                ) {
+                            displacements[i] = 0;
+                        } else {
+                            displacements[i] = dist(gen);
+                        }
                     }
                 }
                 mfemMesh->MoveVertices(displacements);
@@ -114,9 +142,10 @@ int main(int, char *argv[]) {
 
                 MfemL20Space space(mesh);
                 MfemMeshFunction func(space, analyticFunc);
+
                 VectorField gradient;
                 if (type == "haus") {
-                    gradient = calcHousGrad(mesh, func);
+                    gradient = calcHousGrad(mesh, func, false);
                 }
                 if (type == "integral") {
                     gradient = calcIntegralGrad(mesh, func);
@@ -124,14 +153,11 @@ int main(int, char *argv[]) {
                 if (type == "mfem") {
                     mfem::H1_FECollection h1FiniteElementCollection{1, 2};
                     mfem::FiniteElementSpace h1FiniteElementSpace(mesh.getMfemMesh(), &h1FiniteElementCollection, 2);
-                    mfem::FunctionCoefficient boundaryValue([&](const mfem::Vector &point) {
-                        return analyticFunc({point[0], point[1]});
-                    });
-                    mfem::VectorFunctionCoefficient gradientBoundaryValue(2, [&](const mfem::Vector &point,
+
+                    mfem::VectorFunctionCoefficient gradientBoundaryValue(2, [](const mfem::Vector &point,
                                                                                  mfem::Vector &result) {
-                        auto value = analyticGradFunc({point[0], point[1]});
-                        result[0] = value.x;
-                        result[1] = value.y;
+                        result[0] = 3.69106 * cos(11.9066 * point[0] + 9.36195 * point[1]);
+                        result[1] = 2.9022 * cos(11.9066 * point[0] + 9.36195 * point[1]);
                     });
                     gradient = mfemGradient(
                             mesh,
