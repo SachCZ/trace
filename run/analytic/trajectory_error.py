@@ -22,6 +22,12 @@ def fit_func(x, a, b):
 
 
 def compare_gradients(axes, first_grad_type, second_grad_type, eval_method=np.median, fit=False):
+    labels = {
+        "ls": "LSQ",
+        "mfem": "FEM",
+        "integral": "Green's formula"
+    }
+
     for grad_type, markers in zip([first_grad_type, second_grad_type], [["x", "+", "."], ["1", "2", "3"]]):
         for factor, mark in zip([0, 0.02, 0.04], markers):
             if second_grad_type == "mfem" and grad_type == "ls" and factor > 0:
@@ -39,15 +45,20 @@ def compare_gradients(axes, first_grad_type, second_grad_type, eval_method=np.me
                 error = np.absolute(final_x - final_analytic_x)
                 errors.append(eval_method(error))
 
-            axes.loglog(counts, errors, mark, label=grad_type + " $f = $" + str(factor))
+            axes.loglog(counts, errors, mark, label=labels[grad_type] + " $f = $" + str(factor))
 
             if fit and grad_type == "ls" and factor == 0:
                 popt, pcov = optimize.curve_fit(fit_func, counts, errors, p0=[1, -2])
                 x = np.linspace(min(counts), max(counts))
-                axes.loglog(x, fit_func(x, *popt))
+                axes.loglog(x, fit_func(x, *popt), label="$\\sim N^{-1.87}$", color="blue")
                 print(popt[1])
 
-    axes.legend(loc=3)
+    handles, labels = axes.get_legend_handles_labels()
+
+    handles = [handles[1], handles[0], *handles[2:]]
+    labels = [labels[1], labels[0], *labels[2:]]
+
+    axes.legend(handles, labels, loc=3)
     axes.grid()
 
 

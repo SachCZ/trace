@@ -30,9 +30,9 @@ def compare_errors(axes, grad_type, **kwargs):
 
 def main():
     fig, [ax0, ax1] = plt.subplots(2)
-    compare_errors(ax0, "ls", marker="+", label="ls")
-    compare_errors(ax0, "mfem", marker=".", label="mfem")
-    compare_errors(ax0, "integral", marker="1", label="integral")
+    compare_errors(ax0, "ls", marker="+", label="LSQ")
+    compare_errors(ax0, "mfem", marker=".", label="FEM")
+    compare_errors(ax0, "integral", marker="1", label="Green's formula")
     ax0.set_xlabel("$x$ [cm]")
     ax0.set_ylabel("$|x - x_{ref}|$ [cm]")
     ax0.set_ylim((0, 0.0008))
