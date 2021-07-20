@@ -6,8 +6,10 @@ LaserTraceConfig::LaserTraceConfig(const YAML::Node &laserConfig, const TraceCon
     using namespace raytracer;
     gradient = parseGradient(laserConfig, traceConfig);
     laser = parseLaser(laserConfig);
+    reflectedMarker = std::make_unique<Marker>();
+    criticalMarker = std::make_unique<Marker>();
 
-    if (traceConfig.temperature && traceConfig.ionization){
+    if (traceConfig.temperature && traceConfig.ionization) {
         frequency = std::make_unique<MfemMeshFunction>(*traceConfig.l2Space, [&](const Element &e) {
             return calcSpitzerFreq(
                     traceConfig.electronDensity->getValue(e),
@@ -27,7 +29,17 @@ LaserTraceConfig::LaserTraceConfig(const YAML::Node &laserConfig, const TraceCon
         );
     });
 
-    snellsLaw = std::make_unique<SnellsLaw>(gradient, *refractiveIndex, reflectedMarker.get());
+    snellsLaw = std::make_unique<SnellsLawBend>(traceConfig.mesh.get(), refractiveIndex.get(), gradient.get());
+    totalReflect = std::make_unique<TotalReflect>(traceConfig.mesh.get(), refractiveIndex.get(), gradient.get(),
+                                                  reflectedMarker.get());
+    reflectOnCritical = std::make_unique<ReflectOnCritical>(
+            traceConfig.mesh.get(),
+            refractiveIndex.get(),
+            traceConfig.electronDensity.get(),
+            calcCritDens(laser.wavelength).asDouble,
+            gradient.get(),
+            criticalMarker.get()
+    );
     exchangeController = parseExchangeController(laserConfig, traceConfig);
     if (laserConfig["energies_filename"])
         energiesOutputFilename = parse<std::string>(laserConfig, "energies_filename");
@@ -58,10 +70,10 @@ LaserTraceConfig::parseExchangeController(const YAML::Node &laserConfig, const T
                 );
             });
 
-            bremsstrahlung = std::make_unique<Bremsstrahlung>(*invBremssCoeff);
+            bremsstrahlung = std::make_unique<Bremsstrahlung>(invBremssCoeff.get());
             result.addModel(bremsstrahlung.get());
         } else if (type == "resonance") {
-            resonance = std::make_unique<Resonance>(gradient, laser.wavelength, *reflectedMarker);
+            resonance = std::make_unique<Resonance>(laser.wavelength, reflectedMarker.get(), gradient.get());
             result.addModel(resonance.get());
         }
     }
@@ -76,12 +88,12 @@ raytracer::Laser LaserTraceConfig::parseLaser(const YAML::Node &laserConfig) {
     auto endPoint = parseXY<Point>(laserConfig, "end_point");
     auto raysCount = parse<int>(laserConfig, "rays_count");
     Laser::PowerFun powerFunction;
-    if (laserConfig["spatial_FHWM"] && laserConfig["power"]){
+    if (laserConfig["spatial_FHWM"] && laserConfig["power"]) {
         auto spatialFWHM = parse<double>(laserConfig, "spatial_FWHM");
         Power power{parse<double>(laserConfig, "power")};
-        powerFunction = raytracer::Gaussian(spatialFWHM, power.asDouble, 0);
+        powerFunction = raytracer::MaxValGaussian(spatialFWHM, power.asDouble, 0);
     } else {
-        powerFunction = [](double){return 0;};
+        powerFunction = [](double) { return 0; };
     }
     return raytracer::Laser{
             wavelength,
@@ -93,30 +105,44 @@ raytracer::Laser LaserTraceConfig::parseLaser(const YAML::Node &laserConfig) {
     };
 }
 
-raytracer::Gradient LaserTraceConfig::parseGradient(const YAML::Node &node, const TraceConfig &traceConfig) {
+void vec_bdr(const mfem::Vector &point, mfem::Vector &result) {
+    result[0] = 1.7145e+24 * point[0];
+    result[1] = 0;
+}
+
+std::unique_ptr<raytracer::Gradient>
+LaserTraceConfig::parseGradient(const YAML::Node &node, const TraceConfig &traceConfig) {
     using namespace raytracer;
     auto gradType = parse<std::string>(node, "grad_type");
 
     raytracer::VectorField gradAtPoints;
     if (gradType == "ls") {
-        gradAtPoints = calcHousGrad(*traceConfig.mesh, *traceConfig.electronDensity);
+        gradAtPoints = calcHousGrad(*traceConfig.mesh, *traceConfig.electronDensity, false);
     } else if (gradType == "mfem") {
         auto bdrXString = parse<std::string>(node, "grad_boundary_x");
         auto bdrYString = parse<std::string>(node, "grad_boundary_y");
         Expression expressionX(bdrXString);
         Expression expressionY(bdrYString);
-        mfem::VectorFunctionCoefficient gradientBoundaryValue(2, [&](const mfem::Vector &point,
-                                                                     mfem::Vector &result) {
-            result[0] = expressionX(point[0], point[1]);
-            result[1] = expressionY(point[0], point[1]);
-        });
+        mfem::VectorFunctionCoefficient gradientBoundaryValue(2, vec_bdr);
+        /**
+        [&](const mfem::Vector &point,
+               mfem::Vector &result) {
+result[0] = expressionX(point[0], point[1]);
+result[1] = expressionY(point[0], point[1]);
+});
+         */
         gradAtPoints = mfemGradient(*traceConfig.mesh, *traceConfig.electronDensity, &gradientBoundaryValue);
     } else if (gradType == "integral") {
         gradAtPoints = calcIntegralGrad(*traceConfig.mesh, *traceConfig.electronDensity);
     } else {
         throw ParsingError("Unknown gradient type");
     }
-    return LinInterGrad(gradAtPoints);
+    gradAtPoints = raytracer::setValue(
+            gradAtPoints,
+            traceConfig.mesh->getBoundaryPoints(),
+            {1, 0}
+    );
+    return std::make_unique<LinInterGrad>(gradAtPoints);
 }
 
 TraceConfig::TraceConfig(const YAML::Node &config) {
@@ -143,7 +169,7 @@ std::vector<LaserTraceConfig> TraceConfig::parseLasers(const YAML::Node &config)
     return result;
 }
 
-void randomizeMesh(raytracer::MfemMesh& mesh, double factor, int xSegments, int ySegments){
+void randomizeMesh(raytracer::MfemMesh &mesh, double factor, int xSegments, int ySegments) {
     raytracer::MfemMesh::Displacements displacements;
     std::mt19937 gen(std::random_device{}());
     double maxXDisplacement = 1.0 / xSegments * factor;
@@ -151,12 +177,12 @@ void randomizeMesh(raytracer::MfemMesh& mesh, double factor, int xSegments, int 
     std::uniform_real_distribution xDist(-maxXDisplacement, maxXDisplacement);
     std::uniform_real_distribution yDist(-maxYDisplacement, maxYDisplacement);
 
-    const auto& innerPoints = mesh.getInnerPoints();
-    for (auto point : mesh.getPoints()){
+    const auto &innerPoints = mesh.getInnerPoints();
+    for (auto point : mesh.getPoints()) {
         if (std::find(innerPoints.begin(), innerPoints.end(), point) == innerPoints.end()) {
             displacements.emplace_back(raytracer::Vector{0, 0});
         } else {
-            displacements.emplace_back(raytracer::Vector{xDist(gen), yDist(gen) });
+            displacements.emplace_back(raytracer::Vector{xDist(gen), yDist(gen)});
         }
     }
     mesh.moveNodes(displacements);
@@ -166,8 +192,7 @@ TraceConfig::MeshPtr TraceConfig::parseMesh(const YAML::Node &config) {
     if (config["mesh_file"]) {
         auto meshFilename = config["mesh_file"].as<std::string>();
         return std::make_unique<raytracer::MfemMesh>(meshFilename);
-    }
-    else if (config["mesh"]){
+    } else if (config["mesh"]) {
         if (
                 !config["mesh"]["x0"] ||
                 !config["mesh"]["x1"] ||
@@ -176,7 +201,8 @@ TraceConfig::MeshPtr TraceConfig::parseMesh(const YAML::Node &config) {
                 !config["mesh"]["x_segments"] ||
                 !config["mesh"]["y_segments"]
 
-        ) throw ParsingError("Invalid mesh config");
+                )
+            throw ParsingError("Invalid mesh config");
 
         auto x0 = config["mesh"]["x0"].as<double>();
         auto x1 = config["mesh"]["x1"].as<double>();
@@ -189,7 +215,7 @@ TraceConfig::MeshPtr TraceConfig::parseMesh(const YAML::Node &config) {
         raytracer::SegmentedLine sideY{y0, y1, ySegments};
         auto result = std::make_unique<raytracer::MfemMesh>(sideX, sideY);
 
-        if (config["mesh"]["randomize_factor"]){
+        if (config["mesh"]["randomize_factor"]) {
             auto randomFactor = config["mesh"]["randomize_factor"].as<double>();
             randomizeMesh(*result, randomFactor, xSegments, ySegments);
             result->updateMesh();
@@ -237,7 +263,7 @@ FunctionPtr TraceConfig::parseDensity(const YAML::Node &config) const {
         });
     } else if ((config["ion_dens_file"] || config["ion_dens_profile"]) && config["atomic_mass"]) {
         FunctionPtr density;
-        if (config["ion_dens_file"]){
+        if (config["ion_dens_file"]) {
             density = parseFunction(config, "ion_dens_file");
         } else if (config["ion_dens_profile"]) {
             auto expression = Expression(config["ion_dens_profile"].as<std::string>());

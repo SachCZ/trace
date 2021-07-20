@@ -56,7 +56,7 @@ def main():
 
     popt, pcov = optimize.curve_fit(fit_func, segments_counts, norms_set[0], p0=[14.])
     x = np.linspace(min(segments_counts), max(segments_counts), 100)
-    conv_axes.loglog(x, fit_func(x, *popt), label="$~x^{-2}$")
+    conv_axes.loglog(x, fit_func(x, *popt), label="$\\sim N^{-2}$")
 
     for factor, norms, marker in zip(factors, norms_set, markers):
         conv_axes.loglog(segments_counts, norms, marker, label="$f$ = {}".format(factor))
@@ -66,7 +66,7 @@ def main():
     conv_axes.set_xlabel("$N$ [-]")
     conv_axes.set_ylabel("$\\Delta \\varepsilon / \\varepsilon$ [-]")
     plt.show()
-    conv_fig.savefig("images/conv.png")
+    conv_fig.savefig("images/mfem_sin_grad.png")
 
 
 if __name__ == '__main__':

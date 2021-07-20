@@ -49,12 +49,16 @@ def main():
     for factor, norms, marker in zip(factors, norms_set, markers):
         conv_axes.semilogx(segments_counts, norms, marker, label="$f$ = {}".format(factor))
 
-    conv_axes.legend()
+
+
     conv_axes.grid()
     conv_axes.set_xlabel("$N$ [-]")
     conv_axes.set_ylabel("$\\Delta \\varepsilon / \\varepsilon$ [-]")
+
+    plt.legend(bbox_to_anchor=(0.1, 0.6), bbox_transform=conv_axes.transAxes)
+
     plt.show()
-    conv_fig.savefig("images/conv.png")
+    conv_fig.savefig("images/green_lin_conv.png")
 
 
 if __name__ == '__main__':

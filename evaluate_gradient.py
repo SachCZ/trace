@@ -94,7 +94,7 @@ def main(folder, config_name="config.yaml"):
         x = np.linspace(min(segments_count), max(segments_count), 100)
         conv_axes.loglog(x, fit_func(x, *popt), color=line.get_color())
 
-        """
+
         for segments, vector_field, analytic_vector_field in zip(segments_count, vector_fields, analytic_vector_fields):
             if segments > 30:
                 continue
@@ -107,7 +107,7 @@ def main(folder, config_name="config.yaml"):
                 gf = rayvis.read_grid_function(f, mesh)
             plot_grad_summary(fig, dual_mesh, gf, vector_field, analytic_vector_field)
             plt.savefig(os.path.join(folder, "output/summary{}_{}.png".format(segments, factor)))
-        """
+
     conv_axes.legend()
     conv_fig.savefig(os.path.join(folder, "output/conv.png"))
 
