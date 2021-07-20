@@ -1,0 +1,27 @@
+mesh_file: "./input/mesh.vtk"
+ion_dens_file: "./input/density.gf"
+atomic_mass: 55.845
+temperature_file: "./input/temperature.gf"
+ionization_file: "./input/ionization.gf"
+gain_file: "./input/gain.gf"
+rays_filename: "output/rays.msgpack"
+absorbed_power_filename: "output/power.gf"
+mesh_output_filename: "output/mesh.mfem"
+lasers:
+  - wavelength: 25.5e-7
+    direction:
+      x: 0
+      y: 1
+    spatial_FWHM: 10e-4
+    energy: 1
+    start_point:
+      x: 10e-4
+      y: -0.03
+    end_point:
+      x: 50e-4
+      y: -0.03
+    rays_count: 100
+    estimate_bremsstrahlung: false
+    estimate_resonance: false
+    estimate_gain: true
+    grad_type: "ls"
