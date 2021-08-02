@@ -64,7 +64,7 @@ def main():
     conv_axes.legend()
     conv_axes.grid()
     conv_axes.set_xlabel("$N$ [-]")
-    conv_axes.set_ylabel("$\\Delta \\varepsilon / \\varepsilon$ [-]")
+    conv_axes.set_ylabel("$\\Delta \\varepsilon$ [-]")
     plt.show()
     conv_fig.savefig("images/ls_sin_grad.png")
 

@@ -50,7 +50,7 @@ def plot_rays(folder):
 
     with open(os.path.join(folder, "output/energies0.msgpack"), "rb") as f:
         energies = read_msgpack_energies(f)
-    energies = list(energies)
+
     final_energies = [e[-1] for e in energies]
     final_x = np.array([ray.x[-1] for ray in rays])
     final_analytic_x = np.array([ray.x[-1] for ray in analytic_rays])

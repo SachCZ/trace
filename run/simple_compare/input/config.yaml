@@ -1,0 +1,28 @@
+mesh:
+  x0: 0
+  x1: 6e-3
+  x_segments: 60
+  y0: 0
+  y1: 1e-3
+  y_segments: 1
+ele_dens_profile: if (x < 1e-3) 1.1148539818952543e+21 * (1 + 1e0); else 1.1148539818952543e+21 * (1 - 1e-5);
+temperature_profile: if (x < 1e-3) 1; else 1000;
+ionization_profile: 1
+absorbed_power_filename: "output/absorbed_energy.gf"
+rays_filename: "output/energies0.msgpack"
+mesh_output_filename: "output/mesh.mfem"
+lasers:
+  - direction:
+      x: -1
+      y: 0
+    end_point:
+      x: 7e-3
+      y: 5.5e-4
+    constant_power: 1e23
+    grad_type: ls
+    rays_count: 1
+    start_point:
+      x: 7e-3
+      y: 4.5e-4
+    power_exchange: [ "bremsstrahlung" ]
+    wavelength: 1e-4

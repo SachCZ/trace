@@ -53,7 +53,7 @@ def main():
 
     conv_axes.grid()
     conv_axes.set_xlabel("$N$ [-]")
-    conv_axes.set_ylabel("$\\Delta \\varepsilon / \\varepsilon$ [-]")
+    conv_axes.set_ylabel("$\\Delta \\varepsilon$ [-]")
 
     plt.legend(bbox_to_anchor=(0.1, 0.6), bbox_transform=conv_axes.transAxes)
 

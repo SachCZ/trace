@@ -88,10 +88,13 @@ raytracer::Laser LaserTraceConfig::parseLaser(const YAML::Node &laserConfig) {
     auto endPoint = parseXY<Point>(laserConfig, "end_point");
     auto raysCount = parse<int>(laserConfig, "rays_count");
     Laser::PowerFun powerFunction;
-    if (laserConfig["spatial_FHWM"] && laserConfig["power"]) {
+    if (laserConfig["power"] && laserConfig["spatial_FWHM"]) {
         auto spatialFWHM = parse<double>(laserConfig, "spatial_FWHM");
         Power power{parse<double>(laserConfig, "power")};
         powerFunction = raytracer::MaxValGaussian(spatialFWHM, power.asDouble, 0);
+    } else if (laserConfig["constant_power"]) {
+        auto value = parse<double>(laserConfig, "constant_power");
+        powerFunction = [value](double) {return value;};
     } else {
         powerFunction = [](double) { return 0; };
     }

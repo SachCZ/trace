@@ -12,12 +12,12 @@ lasers:
       x: -0.005
       y: 1
     power: 1
-    spatial_FWHM: 50e-4
+    spatial_FWHM: 70e-4
     start_point:
       x: 2e-4
       y: -0.03
     end_point:
-      x: 102e-4
+      x: 105e-4
       y: -0.03
     rays_count: 1000
     power_exchange: ["gain"]
